@@ -299,9 +299,7 @@ def delete_api_key(current_user, key_id):
     
     return jsonify({'message': 'API key deleted'}), 200
 
-# ============================================================================
 # VIDEO ENDPOINTS (Same as original)
-# ============================================================================
 
 @app.route('/api/v1/users/<int:user_id>/videos', methods=['GET'])
 @require_auth
@@ -434,9 +432,8 @@ def delete_video(user_id, current_user, video_id):
     
     return jsonify({'message': 'Video deleted'}), 200
 
-# ============================================================================
+
 # SEARCH ENDPOINTS (Proxy to Search Service)
-# ============================================================================
 
 @app.route('/api/v1/users/<int:user_id>/search', methods=['POST'])
 @require_auth
