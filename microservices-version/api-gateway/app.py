@@ -76,9 +76,8 @@ class SearchJob(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
 
-    # ============================================================================
+
 # AUTHENTICATION HELPERS (Same as your original)
-# ============================================================================
 
 def generate_jwt_token(user_id):
     """Generate JWT token for user"""
@@ -157,9 +156,8 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# ============================================================================
 # ANALYTICS LOGGING
-# ============================================================================
+
 
 def log_request(user_id, api_key_id, endpoint, method, status_code, response_time):
     """Log API request for analytics"""
@@ -177,9 +175,7 @@ def log_request(user_id, api_key_id, endpoint, method, status_code, response_tim
     if len(api_requests_log) > 10000:
         api_requests_log.pop(0)
 
-# ============================================================================
 # AUTH ENDPOINTS
-# ============================================================================
 
 @app.route('/api/v1/auth/register', methods=['POST'])
 def register():
@@ -235,9 +231,8 @@ def login():
         'token': token
     })
 
-# ============================================================================
+#
 # API KEY ENDPOINTS
-# ============================================================================
 
 @app.route('/api/v1/auth/api-keys', methods=['POST'])
 @require_auth
@@ -495,7 +490,84 @@ def get_search_results(user_id, current_user, job_id):
         return jsonify({'error': 'Search service unavailable'}), 503
 
 
+# ANALYTICS ENDPOINTS (For Developer Dashboard)
 
+@app.route('/api/v1/analytics/overview', methods=['GET'])
+@require_auth
+def analytics_overview(current_user):
+    """Get analytics overview for current user"""
+    user_id = current_user.id
+    
+    user_requests = [r for r in api_requests_log if r['user_id'] == user_id]
+    
+    total_requests = len(user_requests)
+    success_count = len([r for r in user_requests if 200 <= r['status_code'] < 300])
+    success_rate = (success_count / total_requests * 100) if total_requests > 0 else 0
+    
+    avg_response_time = sum(r['response_time'] for r in user_requests) / max(total_requests, 1)
+    
+    endpoint_counts = {}
+    for r in user_requests:
+        endpoint = r['endpoint']
+        endpoint_counts[endpoint] = endpoint_counts.get(endpoint, 0) + 1
+    
+    return jsonify({
+        'total_requests': total_requests,
+        'success_rate': round(success_rate, 2),
+        'avg_response_time': round(avg_response_time, 4),
+        'requests_by_endpoint': endpoint_counts
+    })
+
+@app.route('/api/v1/analytics/timeline', methods=['GET'])
+@require_auth
+def analytics_timeline(current_user):
+    """Get request timeline data"""
+    user_id = current_user.id
+    days = int(request.args.get('days', 7))
+    
+    user_requests = [r for r in api_requests_log if r['user_id'] == user_id]
+    
+    from collections import defaultdict
+    daily_counts = defaultdict(int)
+    
+    for r in user_requests:
+        date = r['timestamp'][:10]
+        daily_counts[date] += 1
+    
+    timeline = [{'date': date, 'count': count} 
+                for date, count in sorted(daily_counts.items())]
+    
+    return jsonify({'timeline': timeline[-days:]})
+
+@app.route('/api/v1/analytics/api-keys', methods=['GET'])
+@require_auth
+def analytics_api_keys(current_user):
+    """Get usage statistics per API key"""
+    user_id = current_user.id
+    
+    api_keys = APIKey.query.filter_by(user_id=user_id, is_active=True).all()
+    
+    key_usage = {}
+    for key in api_keys:
+        key_requests = [r for r in api_requests_log if r['api_key_id'] == key.id]
+        key_usage[key.id] = {
+            'key_id': key.id,
+            'name': key.name,
+            'total_requests': len(key_requests),
+            'success_count': len([r for r in key_requests if 200 <= r['status_code'] < 300])
+        }
+    
+    return jsonify({'api_keys': list(key_usage.values())})
+
+# HEALTH CHECK
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'api-gateway'
+    }), 200
 # RUN
 
 if __name__ == '__main__':
