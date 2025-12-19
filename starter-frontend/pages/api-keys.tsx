@@ -46,33 +46,9 @@ export default function ApiKeys() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold">Video Search Platform</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push('/')}
-                className="text-gray-700 hover:text-gray-900"
-              >
-                Dashboard
-              </button>
-              <button
-                onClick={() => {
-                  dispatch(logout());
-                  router.push('/login');
-                }}
-                className="text-gray-700 hover:text-gray-900"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <>
+
+
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
@@ -165,9 +141,8 @@ export default function ApiKeys() {
                         Created: {new Date(key.created_at).toLocaleDateString()}
                         {key.last_used_at && ` • Last used: ${new Date(key.last_used_at).toLocaleDateString()}`}
                       </p>
-                      <span className={`inline-block mt-2 px-2 py-1 text-xs rounded ${
-                        key.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                      }`}>
+                      <span className={`inline-block mt-2 px-2 py-1 text-xs rounded ${key.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
                         {key.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
@@ -184,6 +159,6 @@ export default function ApiKeys() {
           </div>
         </div>
       </main>
-    </div>
+    </>
   );
 }
