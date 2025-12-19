@@ -1,114 +1,174 @@
-# Fullstack Developer Internship Assignment
+# Microservices Video Platform
 
-This folder contains a **working monolith application** for the fullstack developer internship position at Imaginario.
+A scalable, microservices-based video platform built with Python (Flask), utilizing an API Gateway pattern to orchestrate authentication, video management, search, and analytics.
 
-## Contents
+## System Architecture
 
-- **`ASSIGNMENT.md`** - Main assignment instructions (break monolith into microservices + create dashboard)
-- **`starter-backend/`** - Working Flask backend (monolith)
-- **`starter-frontend/`** - Working Next.js frontend
-- **`test_monolith.sh`** - Test script to verify the monolith works
+The system follows a **Microservices Architecture** where a central **API Gateway** routes all client requests to the appropriate downstream services.
 
-## Quick Start
+### Architecture Diagram
+```mermaid
+graph TD
+    Client[Frontend / API Client] -->|Port 5000| Gateway[API Gateway]
+    Gateway -->|/auth| Auth[Auth Service :5002]
+    Gateway -->|/videos| Video[Video Service :5003]
+    Gateway -->|/search| Search[Search Service :5001]
+    Gateway -->|/analytics| Analytics[Analytics Service :5004]
+    
+    Auth --> DB[(Shared SQLite DB)]
+    Video --> DB
+    Search --> DB
+    Analytics --> DB
+```
 
-### 1. Test the Monolith (Verify It Works)
+### Key Components
+- **API Gateway (Port 5000)**: Single entry point. Handles routing, CORS, and request forwarding.
+- **Auth Service (Port 5002)**: Manages user registration, login, and JWT generation.
+- **Video Service (Port 5003)**: Handles video CRUD operations.
+- **Search Service (Port 5001)**: Asynchronous search using a Job Queue pattern.
+- **Analytics Service (Port 5004)**: Provides usage statistics and insights.
+- **Shared Database**: A single SQLite instance accessed by all services (for simplicity in this dev environment).
 
-**Backend:**
+---
+
+## Service Map
+
+| Service | Port | Base Route | Responsibilities |
+| :--- | :--- | :--- | :--- |
+| **API Gateway** | `5000` | `/api/v1/*` | Routing, CORS, Health Checks |
+| **Search Service** | `5001` | `/api/v1/search` | Async Search Jobs, Polling Results |
+| **Auth Service** | `5002` | `/api/v1/auth` | Register, Login, Token Mgmt |
+| **Video Service** | `5003` | `/api/v1/videos` | Create, Read, Update, Delete Videos |
+| **Analytics Service** | `5004` | `/api/v1/analytics` | Dashboard Data, Usage Stats |
+
+---
+
+## Setup Instructions
+
+### Prerequisites
+- Python 3.8+
+- Node.js 14+ (for Frontend)
+- PowerShell (for testing script)
+
+### 1. Environment Configuration
+Each service requires specific environment variables. Ensure your `.env` files or system environment variables are set.
+
+**Common Variables:**
 ```bash
-cd starter-backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+# Shared Database Path (Absolute path recommended)
+DATABASE_URL=sqlite:///C:/path/to/shared/database.db
+
+# Service URLs (Used by Gateway)
+AUTH_SERVICE_URL=http://localhost:5002
+VIDEO_SERVICE_URL=http://localhost:5003
+SEARCH_SERVICE_URL=http://localhost:5001
+ANALYTICS_SERVICE_URL=http://localhost:5004
+
+# Security
+JWT_SECRET=my_shared_secret_123
+```
+
+### 2. Running the Services
+You need to run each service in a separate terminal.
+
+**API Gateway:**
+```bash
+cd microservices-version/api-gateway
 python app.py
 ```
 
-Backend runs on `http://localhost:5000`
-
-**Frontend:**
+**Auth Service:**
 ```bash
-cd starter-frontend
-npm install
-# Create .env.local:
-echo "NEXT_PUBLIC_API_URL=http://localhost:5000" > .env.local
-npm run dev
+cd microservices-version/auth-service
+python app.py
 ```
 
-Frontend runs on `http://localhost:3000`
-
-**Test the Backend:**
+**Video Service:**
 ```bash
-# In another terminal (with jq installed for JSON formatting)
-./test_monolith.sh
+cd microservices-version/video-service
+python app.py
 ```
 
-### 2. Read the Assignment
-
-Read `ASSIGNMENT.md` for complete instructions on:
-- Breaking the monolith into microservices
-- Creating a developer dashboard
-- Submission requirements
-
-## What's Working
-
-### Backend (`starter-backend/`)
-- ✅ User authentication (register, login)
-- ✅ JWT token generation
-- ✅ API key management (create, list, delete)
-- ✅ Video CRUD operations
-- ✅ Search functionality (text-based search in titles/descriptions)
-- ✅ All endpoints functional
-
-### Frontend (`starter-frontend/`)
-- ✅ Login/Register pages
-- ✅ Video library dashboard
-- ✅ Create/Edit/Delete videos
-- ✅ Search functionality
-- ✅ API key management
-- ✅ Redux state management
-- ✅ All features working
-
-## Your Task
-
-1. **Break down the monolith**:
-   - Extract search into Search Microservice
-   - Convert backend to API Gateway
-   - Maintain same API interface
-
-2. **Create Developer Dashboard**:
-   - Build a dashboard for API users (developers using API keys)
-   - Track API usage statistics and analytics
-   - Monitor search jobs in real-time
-   - View usage per API key
-   - Professional developer-focused UI
-
-See `ASSIGNMENT.md` for detailed requirements.
-
-## Project Structure
-
-```
-internship/
-├── ASSIGNMENT.md              # Main assignment instructions
-├── starter-backend/           # Working Flask monolith
-│   ├── app.py                # Main application
-│   ├── requirements.txt      # Dependencies
-│   └── README.md             # Setup instructions
-├── starter-frontend/          # Working Next.js frontend
-│   ├── pages/                # Next.js pages
-│   ├── lib/                  # API client, Redux slices
-│   ├── package.json          # Dependencies
-│   └── README.md             # Setup instructions
-└── test_monolith.sh          # Test script
+**Search Service:**
+```bash
+cd microservices-version/search-service
+python app.py
 ```
 
-## Notes
+**Analytics Service:**
+```bash
+cd microservices-version/analytics-service
+python app.py
+```
 
-- The monolith is **fully functional** - all features work
-- Your task is to **refactor** it into microservices
-- Maintain **backward compatibility** (same API interface)
-- Create a **developer dashboard** for API users to:
-  - Track their API usage and analytics
-  - Monitor their search jobs
-  - View usage per API key
-  - Get insights into their API consumption
+---
 
-Good luck! 🚀
+## Integration Testing
+
+We provide a PowerShell script to verify the "Golden Path" of the application: **Register -> Create Video -> Async Search -> Poll Results**.
+
+### Running the Test
+```powershell
+./test_microservices.ps1
+```
+
+### What it Tests
+1.  **Health Check**: Verifies the Gateway is online.
+2.  **Registration**: Creates a new user via Auth Service.
+3.  **Data Creation**: Posts a video via Video Service.
+4.  **Async Search**: Submits a search job to Search Service.
+5.  **Polling**: Polls the job status until completion.
+6.  **Validation**: Ensures the search result matches the created video.
+
+---
+
+## Frontend Integration
+
+The frontend should **ONLY** communicate with the API Gateway.
+
+### Configuration
+In your frontend `.env.local`:
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+### API Client Example
+```javascript
+// Correct: Point to Gateway
+const apiClient = axios.create({
+  baseURL: 'http://localhost:5000/api/v1',
+  headers: { Authorization: `Bearer ${token}` }
+});
+
+// Incorrect: Pointing directly to services
+// const videoClient = axios.create({ baseURL: 'http://localhost:5003' });
+```
+
+---
+
+## Troubleshooting Guide
+
+### 1. `WinError 10061` / Service Offline
+**Symptom**: The test script or frontend fails with "Connection refused".
+**Fix**:
+- Ensure **ALL** 5 python processes (Gateway + 4 Services) are running.
+- Check if the ports (5000-5004) are already in use by another application.
+
+### 2. "Video service unavailable" (503 Error)
+**Symptom**: Gateway returns 503 when accessing video routes.
+**Fix**:
+- Verify `VIDEO_SERVICE_URL` in the Gateway's `.env` matches the actual port the Video Service is running on.
+- Ensure the Video Service is not crashing on startup.
+
+### 3. SQLAlchemy Configuration Errors
+**Symptom**: "no such table" or database lock errors.
+**Fix**:
+- Ensure all services are pointing to the **EXACT SAME** `database.db` file.
+- Use an absolute path for `DATABASE_URL` to avoid relative path confusion between services.
+- Example: `sqlite:///C:/Users/DELL/Project/shared/database.db`
+
+### 4. Search Returns No Results
+**Symptom**: Test script says "COMMUNICATION OK, BUT NO RESULTS".
+**Fix**:
+- The Search Service might be checking the database before the Video Service has committed the transaction.
+- Ensure the shared database file is accessible by both services.
