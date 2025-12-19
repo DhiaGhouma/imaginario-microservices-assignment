@@ -486,7 +486,7 @@ def submit_search(user_id, current_user):
     try:
         # Forward to search service
         response = requests.post(
-            f'{SEARCH_SERVICE_URL}/search',
+            f'{SEARCH_SERVICE_URL}/api/v1/search',
             json={
                 'query': data['query'],
                 'video_ids': data.get('video_ids'),
@@ -496,7 +496,7 @@ def submit_search(user_id, current_user):
         )
         
         response_time = time.time() - start_time
-        log_request(user_id, None, '/search', 'POST', response.status_code, response_time)
+        log_request(user_id, None, '/api/v1/search', 'POST', response.status_code, response_time)
         
         return jsonify(response.json()), response.status_code
         
@@ -515,12 +515,12 @@ def get_search_results(user_id, current_user, job_id):
     
     try:
         response = requests.get(
-            f'{SEARCH_SERVICE_URL}/search/{job_id}',
+            f'{SEARCH_SERVICE_URL}/api/v1/search/{job_id}',
             timeout=5
         )
         
         response_time = time.time() - start_time
-        log_request(user_id, None, f'/search/{job_id}', 'GET', response.status_code, response_time)
+        log_request(user_id, None, f'/api/v1/search/{job_id}', 'GET', response.status_code, response_time)
         
         return jsonify(response.json()), response.status_code
         
