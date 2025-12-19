@@ -20,6 +20,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///../
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET'] = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
 app.config['JWT_ALGORITHM'] = 'HS256'
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:3000", "http://localhost:3001"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 
 db = SQLAlchemy(app)
 CORS(app)
@@ -427,6 +435,37 @@ def delete_video(user_id, current_user, video_id):
     
     return jsonify({'message': 'Video deleted'}), 200
 
+# SEARCH JOBS LIST (For Developer Dashboard)
+
+@app.route('/api/v1/search/jobs', methods=['GET'])
+@require_auth
+def list_search_jobs_for_dashboard(current_user):
+    """List search jobs for dashboard"""
+    try:
+        params = {
+            'user_id': current_user.id,
+            'status': request.args.get('status'),
+            'page': request.args.get('page', 1),
+            'per_page': request.args.get('per_page', 50)
+        }
+        
+        # Remove None values
+        params = {k: v for k, v in params.items() if v is not None}
+        
+        response = requests.get(
+            f'{SEARCH_SERVICE_URL}/api/v1/search/jobs',
+            params=params,
+            headers={
+                'X-Service-Token': os.getenv('SERVICE_TOKEN', 'search-service-secret-token')
+            },
+            timeout=5
+        )
+        
+        return jsonify(response.json()), response.status_code
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Search service error: {e}")
+        return jsonify({'error': 'Search service unavailable', 'jobs': [], 'total': 0}), 503
 
 # SEARCH ENDPOINTS (Proxy to Search Service)
 
