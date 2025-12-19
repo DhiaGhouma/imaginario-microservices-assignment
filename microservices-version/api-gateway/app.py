@@ -9,7 +9,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import jwt
 import datetime
-from pycircuitbreaker import CircuitBreaker, CircuitBreakerError
+import time
 
 load_dotenv()
 
@@ -37,13 +37,48 @@ ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://localhost:500
 JWT_SECRET = os.getenv('JWT_SECRET')
 
 # =====================
-# CIRCUIT BREAKERS
+# CUSTOM CIRCUIT BREAKER
 # =====================
-# 5 failures trip the breaker, resets after 30 seconds
-video_circuit = CircuitBreaker(exception_blacklist=[requests.exceptions.RequestException], error_threshold=5, recovery_timeout=30)
-search_circuit = CircuitBreaker(exception_blacklist=[requests.exceptions.RequestException], error_threshold=5, recovery_timeout=30)
-auth_circuit = CircuitBreaker(exception_blacklist=[requests.exceptions.RequestException], error_threshold=5, recovery_timeout=30)
-analytics_circuit = CircuitBreaker(exception_blacklist=[requests.exceptions.RequestException], error_threshold=5, recovery_timeout=30)
+class CircuitBreakerOpenException(Exception):
+    pass
+
+class SimpleCircuitBreaker:
+    def __init__(self, failure_threshold=5, recovery_timeout=30):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failures = 0
+        self.last_failure_time = 0
+        self.state = "CLOSED"
+
+    def call(self, func):
+        if self.state == "OPEN":
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = "HALF_OPEN"
+            else:
+                raise CircuitBreakerOpenException("Circuit is open")
+
+        try:
+            result = func()
+            # If we succeed in HALF_OPEN, reset
+            if self.state == "HALF_OPEN":
+                self.reset()
+            return result
+        except requests.exceptions.RequestException as e:
+            self.failures += 1
+            self.last_failure_time = time.time()
+            if self.failures >= self.failure_threshold:
+                self.state = "OPEN"
+            raise e
+    
+    def reset(self):
+        self.failures = 0
+        self.state = "CLOSED"
+
+# Initialize Breakers
+video_circuit = SimpleCircuitBreaker(failure_threshold=5, recovery_timeout=30)
+search_circuit = SimpleCircuitBreaker(failure_threshold=5, recovery_timeout=30)
+auth_circuit = SimpleCircuitBreaker(failure_threshold=5, recovery_timeout=30)
+analytics_circuit = SimpleCircuitBreaker(failure_threshold=5, recovery_timeout=30)
 
 # =====================
 # UTIL: Forward headers
@@ -79,7 +114,7 @@ def videos(video_id=None):
 
         resp = video_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
-    except CircuitBreakerError:
+    except CircuitBreakerOpenException:
         return jsonify({"error": "Video service temporarily unavailable", "fallback": True}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Video service unavailable"}), 503
@@ -107,7 +142,7 @@ def user_videos_proxy(user_id, video_id=None):
                 
         resp = video_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
-    except CircuitBreakerError:
+    except CircuitBreakerOpenException:
         return jsonify({"error": "Video service temporarily unavailable", "fallback": True}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Video service unavailable"}), 503
@@ -134,7 +169,7 @@ def user_search_proxy(user_id):
             
         resp = search_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
-    except CircuitBreakerError:
+    except CircuitBreakerOpenException:
         return jsonify({"error": "Search service temporarily unavailable", "results": []}), 503
     except Exception as e:
         return jsonify({"error": str(e)}), 503
@@ -152,7 +187,7 @@ def user_search_results_proxy(user_id, job_id):
             
         resp = search_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
-    except CircuitBreakerError:
+    except CircuitBreakerOpenException:
         return jsonify({"error": "Search service temporarily unavailable", "status": "failed"}), 503
     except Exception as e:
         return jsonify({"error": str(e)}), 503
@@ -167,7 +202,7 @@ def search():
             
         resp = search_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
-    except CircuitBreakerError:
+    except CircuitBreakerOpenException:
         return jsonify({"error": "Search service temporarily unavailable", "results": []}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Search service unavailable"}), 503
@@ -182,7 +217,7 @@ def search_results(job_id):
             
         resp = search_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
-    except CircuitBreakerError:
+    except CircuitBreakerOpenException:
         return jsonify({"error": "Search service temporarily unavailable", "status": "failed"}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Search service unavailable"}), 503
@@ -206,7 +241,7 @@ def auth_proxy(path):
                 
         resp = auth_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
-    except CircuitBreakerError:
+    except CircuitBreakerOpenException:
         return jsonify({"error": "Auth service temporarily unavailable"}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Auth service unavailable"}), 503
@@ -224,7 +259,7 @@ def analytics_overview():
             
         resp = analytics_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
-    except CircuitBreakerError:
+    except CircuitBreakerOpenException:
         return jsonify({"error": "Analytics service temporarily unavailable", "stats": {}}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Analytics service unavailable"}), 503
