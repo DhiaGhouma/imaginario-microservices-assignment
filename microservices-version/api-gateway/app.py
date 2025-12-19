@@ -9,6 +9,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import jwt
 import datetime
+from pycircuitbreaker import CircuitBreaker, CircuitBreakerError
 
 load_dotenv()
 
@@ -36,6 +37,15 @@ ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://localhost:500
 JWT_SECRET = os.getenv('JWT_SECRET')
 
 # =====================
+# CIRCUIT BREAKERS
+# =====================
+# 5 failures trip the breaker, resets after 30 seconds
+video_circuit = CircuitBreaker(exception_blacklist=[requests.exceptions.RequestException], error_threshold=5, recovery_timeout=30)
+search_circuit = CircuitBreaker(exception_blacklist=[requests.exceptions.RequestException], error_threshold=5, recovery_timeout=30)
+auth_circuit = CircuitBreaker(exception_blacklist=[requests.exceptions.RequestException], error_threshold=5, recovery_timeout=30)
+analytics_circuit = CircuitBreaker(exception_blacklist=[requests.exceptions.RequestException], error_threshold=5, recovery_timeout=30)
+
+# =====================
 # UTIL: Forward headers
 # =====================
 def forward_headers():
@@ -56,15 +66,21 @@ def videos(video_id=None):
         return '', 200
     try:
         url = f"{VIDEO_SERVICE_URL}/api/v1/videos" + (f"/{video_id}" if video_id else "")
-        if request.method == 'GET':
-            resp = requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
-        elif request.method == 'POST':
-            resp = requests.post(url, json=request.json, headers=forward_headers())
-        elif request.method == 'PUT':
-            resp = requests.put(url, json=request.json, headers=forward_headers())
-        else:  # DELETE
-            resp = requests.delete(url, headers=forward_headers())
+        
+        def call_service():
+            if request.method == 'GET':
+                return requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
+            elif request.method == 'POST':
+                return requests.post(url, json=request.json, headers=forward_headers())
+            elif request.method == 'PUT':
+                return requests.put(url, json=request.json, headers=forward_headers())
+            else:  # DELETE
+                return requests.delete(url, headers=forward_headers())
+
+        resp = video_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerError:
+        return jsonify({"error": "Video service temporarily unavailable", "fallback": True}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Video service unavailable"}), 503
 
@@ -78,15 +94,21 @@ def user_videos_proxy(user_id, video_id=None):
         return '', 200
     try:
         url = f"{VIDEO_SERVICE_URL}/api/v1/videos" + (f"/{video_id}" if video_id else "")
-        if request.method == 'GET':
-            resp = requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
-        elif request.method == 'POST':
-            resp = requests.post(url, json=request.json, headers=forward_headers())
-        elif request.method == 'PUT':
-            resp = requests.put(url, json=request.json, headers=forward_headers())
-        elif request.method == 'DELETE':
-            resp = requests.delete(url, headers=forward_headers())
+        
+        def call_service():
+            if request.method == 'GET':
+                return requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
+            elif request.method == 'POST':
+                return requests.post(url, json=request.json, headers=forward_headers())
+            elif request.method == 'PUT':
+                return requests.put(url, json=request.json, headers=forward_headers())
+            elif request.method == 'DELETE':
+                return requests.delete(url, headers=forward_headers())
+                
+        resp = video_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerError:
+        return jsonify({"error": "Video service temporarily unavailable", "fallback": True}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Video service unavailable"}), 503
 
@@ -103,12 +125,17 @@ def user_search_proxy(user_id):
         data['user_id'] = user_id
         data['userId'] = user_id 
         
-        resp = requests.post(
-            f"{SEARCH_SERVICE_URL}/api/v1/search", 
-            json=data, 
-            headers=forward_headers()
-        )
+        def call_service():
+            return requests.post(
+                f"{SEARCH_SERVICE_URL}/api/v1/search", 
+                json=data, 
+                headers=forward_headers()
+            )
+            
+        resp = search_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerError:
+        return jsonify({"error": "Search service temporarily unavailable", "results": []}), 503
     except Exception as e:
         return jsonify({"error": str(e)}), 503
 
@@ -117,20 +144,31 @@ def user_search_results_proxy(user_id, job_id):
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        resp = requests.get(
-            f"{SEARCH_SERVICE_URL}/api/v1/search/{job_id}", 
-            headers=forward_headers()
-        )
+        def call_service():
+            return requests.get(
+                f"{SEARCH_SERVICE_URL}/api/v1/search/{job_id}", 
+                headers=forward_headers()
+            )
+            
+        resp = search_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerError:
+        return jsonify({"error": "Search service temporarily unavailable", "status": "failed"}), 503
     except Exception as e:
         return jsonify({"error": str(e)}), 503
+
 @app.route('/api/v1/search', methods=['POST', 'OPTIONS'])
 def search():
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        resp = requests.post(f"{SEARCH_SERVICE_URL}/api/v1/search", json=request.json, headers=forward_headers())
+        def call_service():
+            return requests.post(f"{SEARCH_SERVICE_URL}/api/v1/search", json=request.json, headers=forward_headers())
+            
+        resp = search_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerError:
+        return jsonify({"error": "Search service temporarily unavailable", "results": []}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Search service unavailable"}), 503
 
@@ -139,8 +177,13 @@ def search_results(job_id):
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        resp = requests.get(f"{SEARCH_SERVICE_URL}/api/v1/search/{job_id}", headers=forward_headers())
+        def call_service():
+            return requests.get(f"{SEARCH_SERVICE_URL}/api/v1/search/{job_id}", headers=forward_headers())
+            
+        resp = search_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerError:
+        return jsonify({"error": "Search service temporarily unavailable", "status": "failed"}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Search service unavailable"}), 503
 
@@ -153,13 +196,18 @@ def auth_proxy(path):
         return '', 200
     url = f"{AUTH_SERVICE_URL}/api/v1/auth/{path}"
     try:
-        if request.method == 'POST':
-            resp = requests.post(url, json=request.json, headers=forward_headers())
-        elif request.method == 'GET':
-            resp = requests.get(url, headers=forward_headers(), params=request.args)
-        else:  # DELETE
-            resp = requests.delete(url, headers=forward_headers())
+        def call_service():
+            if request.method == 'POST':
+                return requests.post(url, json=request.json, headers=forward_headers())
+            elif request.method == 'GET':
+                return requests.get(url, headers=forward_headers(), params=request.args)
+            else:  # DELETE
+                return requests.delete(url, headers=forward_headers())
+                
+        resp = auth_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerError:
+        return jsonify({"error": "Auth service temporarily unavailable"}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Auth service unavailable"}), 503
 
@@ -171,8 +219,13 @@ def analytics_overview():
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        resp = requests.get(f"{ANALYTICS_SERVICE_URL}/api/v1/analytics/overview", headers=forward_headers(), params=request.args)
+        def call_service():
+            return requests.get(f"{ANALYTICS_SERVICE_URL}/api/v1/analytics/overview", headers=forward_headers(), params=request.args)
+            
+        resp = analytics_circuit.call(call_service)
         return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerError:
+        return jsonify({"error": "Analytics service temporarily unavailable", "stats": {}}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Analytics service unavailable"}), 503
 

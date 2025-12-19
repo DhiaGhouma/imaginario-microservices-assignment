@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - AUTH_SERVICE_URL=http://auth-service:5002
+      - VIDEO_SERVICE_URL=http://video-service:5003
+      - SEARCH_SERVICE_URL=http://search-service:5001
+      - ANALYTICS_SERVICE_URL=http://analytics-service:5004
+      - JWT_SECRET=my_shared_secret_123
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      video-service:
+        condition: service_started
+      search-service:
+        condition: service_started
+      analytics-service:
+        condition: service_started
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    ports:
+      - "5002:5002"
+    volumes:
+      - ./shared:/app/shared
+    environment:
+      - PORT=5002
+      - DATABASE_URI=sqlite:////app/shared/database.db
+      - SECRET_KEY=my_shared_secret_123
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  video-service:
+    build: ./video-service
+    container_name: video-service
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./shared:/app/shared
+    environment:
+      - PORT=5003
+      - DATABASE_URI=sqlite:////app/shared/database.db
+      - JWT_SECRET=my_shared_secret_123
+
+  search-service:
+    build: ./search-service
+    container_name: search-service
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./shared:/app/shared
+    environment:
+      - PORT=5001
+      - DATABASE_URI=sqlite:////app/shared/database.db
+      - JWT_SECRET=my_shared_secret_123
+
+  analytics-service:
+    build: ./analytics-service
+    container_name: analytics-service
+    ports:
+      - "5004:5004"
+    volumes:
+      - ./shared:/app/shared
+    environment:
+      - PORT=5004
+      - DATABASE_URI=sqlite:////app/shared/database.db
+      - JWT_SECRET=my_shared_secret_123
