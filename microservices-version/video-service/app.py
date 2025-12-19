@@ -1,23 +1,15 @@
-"""
-Video Service
-Handles CRUD, list, and filtering of videos for logged-in users
-"""
-
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from datetime import datetime
 import os
 import jwt
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URI', 'sqlite:///../shared/database.db'
-)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///../shared/database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 CORS(app, resources={
@@ -30,14 +22,10 @@ CORS(app, resources={
 
 db = SQLAlchemy(app)
 
-# =====================
-# JWT CONFIG
-# =====================
-JWT_SECRET = os.getenv('JWT_SECRET')
+JWT_SECRET = os.getenv('JWT_SECRET') or os.getenv('SECRET_KEY')
 JWT_ALGORITHM = 'HS256'
 
 def get_current_user_id():
-    """Extract user_id from JWT token in Authorization header"""
     auth_header = request.headers.get('Authorization', '')
     if not auth_header.startswith('Bearer '):
         return None
@@ -45,14 +33,9 @@ def get_current_user_id():
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload.get('user_id')
-    except jwt.ExpiredSignatureError:
-        return None
-    except jwt.InvalidTokenError:
+    except:
         return None
 
-# =====================
-# MODELS
-# =====================
 class Video(db.Model):
     __tablename__ = 'videos'
     id = db.Column(db.Integer, primary_key=True)
@@ -63,10 +46,6 @@ class Video(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# =====================
-# VIDEO ENDPOINTS
-# =====================
-
 @app.route('/api/v1/videos', methods=['GET', 'POST', 'OPTIONS'])
 def videos():
     user_id = get_current_user_id()
@@ -76,17 +55,17 @@ def videos():
     if request.method == 'GET':
         query = Video.query.filter_by(user_id=user_id)
         title = request.args.get('title')
-        min_duration = request.args.get('min_duration', type=int)
-        max_duration = request.args.get('max_duration', type=int)
+        min_dur = request.args.get('min_duration', type=int)
+        max_dur = request.args.get('max_duration', type=int)
 
         if title:
             query = query.filter(Video.title.ilike(f"%{title}%"))
-        if min_duration is not None:
-            query = query.filter(Video.duration >= min_duration)
-        if max_duration is not None:
-            query = query.filter(Video.duration <= max_duration)
+        if min_dur is not None:
+            query = query.filter(Video.duration >= min_dur)
+        if max_dur is not None:
+            query = query.filter(Video.duration <= max_dur)
 
-        videos = query.all()
+        results = query.all()
         return jsonify([{
             'id': v.id,
             'title': v.title,
@@ -94,18 +73,18 @@ def videos():
             'duration': v.duration,
             'created_at': v.created_at.isoformat(),
             'updated_at': v.updated_at.isoformat()
-        } for v in videos])
+        } for v in results])
 
     elif request.method == 'POST':
-        data = request.get_json()
-        if not data or not data.get('title'):
-            return jsonify({'error':'Title is required'}), 400
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or not data.get('title'):
+            return jsonify({'error': 'Title is required'}), 400
 
         video = Video(
             user_id=user_id,
             title=data['title'],
             description=data.get('description', ''),
-            duration=data.get('duration', 0)
+            duration=int(data.get('duration', 0))
         )
         db.session.add(video)
         db.session.commit()
@@ -125,7 +104,7 @@ def video_detail(video_id):
 
     video = Video.query.filter_by(id=video_id, user_id=user_id).first()
     if not video:
-        return jsonify({'error':'Video not found'}), 404
+        return jsonify({'error': 'Video not found'}), 404
 
     if request.method == 'GET':
         return jsonify({
@@ -138,10 +117,10 @@ def video_detail(video_id):
         })
 
     elif request.method == 'PUT':
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         video.title = data.get('title', video.title)
         video.description = data.get('description', video.description)
-        video.duration = data.get('duration', video.duration)
+        video.duration = int(data.get('duration', video.duration))
         video.updated_at = datetime.utcnow()
         db.session.commit()
         return jsonify({
@@ -155,21 +134,14 @@ def video_detail(video_id):
     elif request.method == 'DELETE':
         db.session.delete(video)
         db.session.commit()
-        return jsonify({'message':'Video deleted'})
+        return jsonify({'message': 'Video deleted'})
 
-# =====================
-# HEALTH CHECK
-# =====================
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status':'healthy','service':'video-service'}), 200
+    return jsonify({'status': 'healthy', 'service': 'video-service'}), 200
 
-# =====================
-# RUN
-# =====================
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()  # create tables inside the app context
-    port = int(os.getenv('PORT',5003))
-    print(f"🚀 Video Service running on port {port}")
+        db.create_all()
+    port = int(os.getenv('PORT', 5003))
     app.run(debug=True, host='0.0.0.0', port=port)

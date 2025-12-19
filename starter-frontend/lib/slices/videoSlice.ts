@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { videoAPI } from '../api';
 
 interface Video {
@@ -25,28 +25,28 @@ export const fetchVideos = createAsyncThunk(
   'videos/fetchVideos',
   async (userId: number) => {
     const response = await videoAPI.listVideos(userId);
-    return response.videos;
+    return Array.isArray(response) ? response : response.videos || [];
   }
 );
 
 export const createVideo = createAsyncThunk(
   'videos/createVideo',
-  async ({ userId, data }: { userId: number; data: { title: string; description?: string; duration?: number } }) => {
-    return await videoAPI.createVideo(userId, data);
+  async ({ data }: { userId: number; data: { title: string; description?: string; duration?: number } }) => {
+    return await videoAPI.createVideo(data);
   }
 );
 
 export const updateVideo = createAsyncThunk(
   'videos/updateVideo',
-  async ({ userId, videoId, data }: { userId: number; videoId: number; data: Partial<Video> }) => {
-    return await videoAPI.updateVideo(userId, videoId, data);
+  async ({ videoId, data }: { userId: number; videoId: number; data: Partial<Video> }) => {
+    return await videoAPI.updateVideo(videoId, data);
   }
 );
 
 export const deleteVideo = createAsyncThunk(
   'videos/deleteVideo',
-  async ({ userId, videoId }: { userId: number; videoId: number }) => {
-    await videoAPI.deleteVideo(userId, videoId);
+  async ({ videoId }: { userId: number; videoId: number }) => {
+    await videoAPI.deleteVideo(videoId);
     return videoId;
   }
 );
@@ -54,7 +54,12 @@ export const deleteVideo = createAsyncThunk(
 const videoSlice = createSlice({
   name: 'videos',
   initialState,
-  reducers: {},
+  reducers: {
+    clearVideos: (state) => {
+      state.videos = [];
+      state.error = null;
+    }
+  },
   extraReducers: (builder) => {
     builder
       .addCase(fetchVideos.pending, (state) => {
@@ -68,6 +73,7 @@ const videoSlice = createSlice({
       .addCase(fetchVideos.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Failed to fetch videos';
+        state.videos = [];
       })
       .addCase(createVideo.fulfilled, (state, action) => {
         state.videos.push(action.payload);
@@ -84,5 +90,5 @@ const videoSlice = createSlice({
   },
 });
 
+export const { clearVideos } = videoSlice.actions;
 export default videoSlice.reducer;
-
