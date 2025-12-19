@@ -33,7 +33,36 @@ apiClient.interceptors.request.use(
     return Promise.reject(error);
   }
 );
+// Analytics API (for Developer Dashboard)
+export const analyticsAPI = {
+  getOverview: async () => {
+    const response = await apiClient.get('/analytics/overview');
+    return response.data;
+  },
 
+  getTimeline: async (days: number = 7) => {
+    const response = await apiClient.get(`/analytics/timeline?days=${days}`);
+    return response.data;
+  },
+
+  getApiKeyUsage: async () => {
+    const response = await apiClient.get('/analytics/api-keys');
+    return response.data;
+  },
+};
+
+// Search Jobs API (for Developer Dashboard)
+export const searchJobsAPI = {
+  listJobs: async (params?: { status?: string; page?: number; per_page?: number }) => {
+    const response = await apiClient.get('/search/jobs', { params });
+    return response.data;
+  },
+
+  getJobDetails: async (jobId: string) => {
+    const response = await apiClient.get(`/search/jobs/${jobId}`);
+    return response.data;
+  },
+};
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
   (response) => response,
@@ -55,7 +84,7 @@ export const authAPI = {
     const response = await apiClient.post('/auth/register', { email, password, name });
     return response.data;
   },
-  
+
   login: async (email: string, password: string) => {
     const response = await apiClient.post('/auth/login', { email, password });
     // TODO: Store token in localStorage
@@ -64,7 +93,7 @@ export const authAPI = {
     }
     return response.data;
   },
-  
+
   logout: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
@@ -83,22 +112,22 @@ export const videoAPI = {
     const response = await apiClient.get(url);
     return response.data;
   },
-  
+
   getVideo: async (userId: number, videoId: number) => {
     const response = await apiClient.get(`/users/${userId}/videos/${videoId}`);
     return response.data;
   },
-  
+
   createVideo: async (userId: number, data: { title: string; description?: string; duration?: number }) => {
     const response = await apiClient.post(`/users/${userId}/videos`, data);
     return response.data;
   },
-  
+
   updateVideo: async (userId: number, videoId: number, data: Partial<{ title: string; description: string; duration: number }>) => {
     const response = await apiClient.put(`/users/${userId}/videos/${videoId}`, data);
     return response.data;
   },
-  
+
   deleteVideo: async (userId: number, videoId: number) => {
     const response = await apiClient.delete(`/users/${userId}/videos/${videoId}`);
     return response.data;
@@ -111,7 +140,7 @@ export const searchAPI = {
     const response = await apiClient.post(`/users/${userId}/search`, { query, video_ids: videoIds });
     return response.data;
   },
-  
+
   getSearchResults: async (userId: number, jobId: string) => {
     const response = await apiClient.get(`/users/${userId}/search/${jobId}`);
     return response.data;
@@ -124,12 +153,12 @@ export const apiKeyAPI = {
     const response = await apiClient.post('/auth/api-keys', { name });
     return response.data;
   },
-  
+
   listApiKeys: async () => {
     const response = await apiClient.get('/auth/api-keys');
     return response.data;
   },
-  
+
   deleteApiKey: async (keyId: string) => {
     const response = await apiClient.delete(`/auth/api-keys/${keyId}`);
     return response.data;
