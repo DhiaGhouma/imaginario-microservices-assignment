@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import { analyticsAPI, apiKeyAPI, searchJobsAPI } from '../lib/api';
 import StatCard from '../components/dashboard/StatCard';
 import EndpointList from '../components/dashboard/EndpointList';
 import SearchJobsList from '../components/dashboard/SearchJobList';
 import ApiKeyCard from '../components/dashboard/ApiKeyCard';
 import DashboardCard from '../components/dashboard/DashboardCard';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 interface AnalyticsData {
     total_requests: number;
@@ -41,6 +40,12 @@ export default function DeveloperDashboard() {
     const [error, setError] = useState('');
 
     useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            router.push('/login');
+            return;
+        }
+
         loadDashboardData();
 
         // Auto-refresh every 5 seconds
@@ -50,40 +55,30 @@ export default function DeveloperDashboard() {
 
     const loadDashboardData = async () => {
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                router.push('/login');
-                return;
-            }
-
-            const headers = { 'Authorization': `Bearer ${token}` };
-
-            // Load all data in parallel
-            const [analyticsRes, keysRes, jobsRes] = await Promise.all([
-                fetch(`${API_URL}/api/v1/analytics/overview`, { headers }),
-                fetch(`${API_URL}/api/v1/auth/api-keys`, { headers }),
-                fetch(`${API_URL}/api/v1/search/jobs?per_page=20`, { headers })
+            // Load all data in parallel using your API client
+            const [analyticsData, keysData, jobsData] = await Promise.all([
+                analyticsAPI.getOverview().catch(err => {
+                    console.error('Analytics error:', err);
+                    return { total_requests: 0, success_rate: 0, avg_response_time: 0, requests_by_endpoint: {} };
+                }),
+                apiKeyAPI.listApiKeys().catch(err => {
+                    console.error('API Keys error:', err);
+                    return { api_keys: [] };
+                }),
+                searchJobsAPI.listJobs({ per_page: 20 }).catch(err => {
+                    console.error('Jobs error:', err);
+                    return { jobs: [], total: 0 };
+                })
             ]);
 
-            if (analyticsRes.ok) {
-                const data = await analyticsRes.json();
-                setStats(data);
-            }
-
-            if (keysRes.ok) {
-                const data = await keysRes.json();
-                setApiKeys(data.api_keys || []);
-            }
-
-            if (jobsRes.ok) {
-                const data = await jobsRes.json();
-                setJobs(data.jobs || []);
-            }
-
+            setStats(analyticsData);
+            setApiKeys(keysData.api_keys || []);
+            setJobs(jobsData.jobs || []);
             setLoading(false);
+            setError(''); // Clear any previous errors
         } catch (err) {
             console.error('Dashboard error:', err);
-            setError('Failed to load dashboard data');
+            setError('Some dashboard data failed to load');
             setLoading(false);
         }
     };
@@ -94,17 +89,8 @@ export default function DeveloperDashboard() {
         }
 
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${API_URL}/api/v1/auth/api-keys/${keyId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (response.ok) {
-                loadDashboardData(); // Refresh data
-            } else {
-                alert('Failed to delete API key');
-            }
+            await apiKeyAPI.deleteApiKey(keyId);
+            loadDashboardData(); // Refresh data
         } catch (err) {
             alert('Error deleting API key');
         }
@@ -150,13 +136,13 @@ export default function DeveloperDashboard() {
             {error && (
                 <div style={{
                     padding: '12px 16px',
-                    background: '#fee',
-                    border: '1px solid #fcc',
+                    background: '#fff3cd',
+                    border: '1px solid #ffc107',
                     borderRadius: '6px',
                     marginBottom: '24px',
-                    color: '#c00'
+                    color: '#856404'
                 }}>
-                    {error}
+                    ⚠️ {error}
                 </div>
             )}
 
