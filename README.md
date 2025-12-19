@@ -31,11 +31,77 @@ graph TD
 
 ---
 
+## Docker Infrastructure
+
+The platform is fully containerized using Docker and Docker Compose.
+
+### Docker Architecture
+```mermaid
+graph LR
+    subgraph Docker Network
+        Gateway[API Gateway]
+        Auth[Auth Service]
+        Video[Video Service]
+        Search[Search Service]
+        Analytics[Analytics Service]
+    end
+    
+    Volume[(Shared Volume)] <--> Auth
+    Volume <--> Video
+    Volume <--> Search
+    Volume <--> Analytics
+    
+    Host[Host Machine] -->|Port 5000| Gateway
+```
+
+### Running with Docker
+1.  **Build and Start**:
+    ```bash
+    docker-compose up --build
+    ```
+2.  **Access**:
+    - Frontend/API: `http://localhost:5000`
+    - Services communicate internally via DNS (e.g., `http://auth-service:5002`).
+
+---
+
+## Resilience: Circuit Breaker
+
+To prevent cascading failures, the API Gateway implements the **Circuit Breaker** pattern.
+
+### Logic Diagram
+```mermaid
+stateDiagram-v2
+    [*] --> Closed
+    Closed --> Open : Failure Threshold Reached (5 Errors)
+    Open --> HalfOpen : Timeout (30s)
+    HalfOpen --> Closed : Success
+    HalfOpen --> Open : Failure
+    
+    state Closed {
+        [*] --> NormalOperation
+        NormalOperation --> Error : Request Failed
+        Error --> NormalOperation
+    }
+    
+    state Open {
+        [*] --> FastFail
+        FastFail --> [*] : Return 503 Immediately
+    }
+```
+
+### Behavior
+- **Closed State**: Requests flow normally. Failures are counted.
+- **Open State**: After 5 consecutive failures, the circuit opens. All requests fail immediately with a 503 error to protect the downstream service.
+- **Half-Open State**: After 30 seconds, one request is allowed through. If it succeeds, the circuit closes. If it fails, it re-opens.
+
+---
+
 ## Service Map
 
 | Service | Port | Base Route | Responsibilities |
 | :--- | :--- | :--- | :--- |
-| **API Gateway** | `5000` | `/api/v1/*` | Routing, CORS, Health Checks |
+| **API Gateway** | `5000` | `/api/v1/*` | Routing, CORS, Circuit Breaker |
 | **Search Service** | `5001` | `/api/v1/search` | Async Search Jobs, Polling Results |
 | **Auth Service** | `5002` | `/api/v1/auth` | Register, Login, Token Mgmt |
 | **Video Service** | `5003` | `/api/v1/videos` | Create, Read, Update, Delete Videos |
@@ -43,7 +109,7 @@ graph TD
 
 ---
 
-## Setup Instructions
+## Setup Instructions (Local Dev)
 
 ### Prerequisites
 - Python 3.8+
@@ -159,6 +225,7 @@ const apiClient = axios.create({
 **Fix**:
 - Verify `VIDEO_SERVICE_URL` in the Gateway's `.env` matches the actual port the Video Service is running on.
 - Ensure the Video Service is not crashing on startup.
+- **Circuit Breaker**: If the service failed multiple times, wait 30 seconds for the breaker to reset.
 
 ### 3. SQLAlchemy Configuration Errors
 **Symptom**: "no such table" or database lock errors.
