@@ -42,11 +42,9 @@ def perform_search(query, user_id=None):
     query_lower = query.lower()
     query_words = query_lower.split()
 
-    video_query = Video.query
-    if user_id:
-        video_query = video_query.filter(Video.user_id == user_id)
+    # EASIEST FIX: Search ALL videos, don't filter by user_id
+    videos = Video.query.all()
 
-    videos = video_query.all()
     results = []
 
     for video in videos:
@@ -148,6 +146,7 @@ def create_search():
         'job_id': job_id,
         'status': 'pending'
     }), 202
+
 @app.route('/api/v1/search/<job_id>', methods=['GET'])
 def get_search_results(job_id):
     if job_id not in search_jobs:

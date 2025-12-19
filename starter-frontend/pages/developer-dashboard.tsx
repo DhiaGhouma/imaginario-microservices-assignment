@@ -55,7 +55,6 @@ export default function DeveloperDashboard() {
 
     const loadDashboardData = async () => {
         try {
-            // Load all data in parallel using your API client
             const [analyticsData, keysData, jobsData] = await Promise.all([
                 analyticsAPI.getOverview().catch(err => {
                     console.error('Analytics error:', err);

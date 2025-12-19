@@ -1,5 +1,5 @@
 """
-Database initialization using SQLAlchemy (matches your existing structure)
+Database initialization using SQLAlchemy 
 """
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
@@ -10,7 +10,6 @@ import bcrypt
 DATABASE_PATH = 'sqlite:///database.db'
 Base = declarative_base()
 
-# Models (matching your app.py)
 class User(Base):
     __tablename__ = 'users'
     

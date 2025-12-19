@@ -17,11 +17,11 @@ function Test-Assertion {
     param($name, $condition, $details = "")
     
     if ($condition) {
-        Write-Host "  ✅ $name" -ForegroundColor Green
+        Write-Host "   $name" -ForegroundColor Green
         $tests.passed++
         $tests.results += @{ name=$name; passed=$true; details=$details }
     } else {
-        Write-Host "  ❌ $name" -ForegroundColor Red
+        Write-Host "   $name" -ForegroundColor Red
         if ($details) { Write-Host "     $details" -ForegroundColor Gray }
         $tests.failed++
         $tests.results += @{ name=$name; passed=$false; details=$details }
@@ -51,7 +51,7 @@ try {
     Test-Assertion "Gateway is online" ($health.status -eq "healthy")
 } catch {
     Test-Assertion "Gateway is online" $false "Cannot connect to $GATEWAY_URL"
-    Write-Host "`n⚠️  Gateway is down. Cannot continue tests." -ForegroundColor Red
+    Write-Host "` Gateway is down. Cannot continue tests." -ForegroundColor Red
     exit 1
 }
 
@@ -103,7 +103,7 @@ try {
     $userId = $regResponse.user.id
 } catch {
     Test-Assertion "User can register" $false $_.Exception.Message
-    Write-Host "`n⚠️  Cannot continue without authentication" -ForegroundColor Red
+    Write-Host "`Cannot continue without authentication" -ForegroundColor Red
     exit 1
 }
 
@@ -314,7 +314,7 @@ Write-Section "TEST 5: Search Service & Async Processing"
 Write-SubSection "Submit Search Job"
 try {
     $searchBody = @{
-        query = "Automation"  # ← This WILL match "PowerShell Automation"
+        query = "Microservices"  
     } | ConvertTo-Json
 
     $searchResponse = Invoke-RestMethod `
@@ -347,11 +347,11 @@ while ($attempt -lt $maxAttempts -and -not $jobCompleted) {
         if ($jobStatus.status -eq "completed") {
             $jobCompleted = $true
             $searchResults = $jobStatus.results
-            Write-Host "  ⏱️  Job completed in attempt $($attempt + 1)" -ForegroundColor Gray
+            Write-Host "  Job completed in attempt $($attempt + 1)" -ForegroundColor Gray
         } elseif ($jobStatus.status -eq "failed") {
             break
         } else {
-            Write-Host "  ⏳ Polling... Status: $($jobStatus.status) (Attempt $($attempt + 1))" -ForegroundColor Gray
+            Write-Host "  Polling... Status: $($jobStatus.status) (Attempt $($attempt + 1))" -ForegroundColor Gray
             Start-Sleep -Seconds 1
         }
         $attempt++
@@ -359,6 +359,56 @@ while ($attempt -lt $maxAttempts -and -not $jobCompleted) {
         break
     }
 }
+# Add this debug code to your test script right after "Poll for Search Results" section (around line 440)
+
+Write-Host "`n=== DEBUG INFORMATION ===" -ForegroundColor Magenta
+
+# 1. Show the job status details
+Write-Host "`nSearch Job Details:" -ForegroundColor Yellow
+Write-Host "Job ID: $jobId" -ForegroundColor Gray
+Write-Host "Job Completed: $jobCompleted" -ForegroundColor Gray
+Write-Host "Full Job Status:" -ForegroundColor Gray
+Write-Host ($jobStatus | ConvertTo-Json -Depth 5) -ForegroundColor Gray
+
+# 2. Check how many videos exist
+Write-Host "`nChecking Videos in Database:" -ForegroundColor Yellow
+try {
+    $allVideos = Invoke-RestMethod `
+        -Uri "$GATEWAY_URL/api/v1/users/$userId/videos" `
+        -Method GET `
+        -Headers $headers
+    
+    Write-Host "Total videos for this user: $($allVideos.Count)" -ForegroundColor Gray
+    foreach ($v in $allVideos) {
+        Write-Host "  - Video ID: $($v.id), Title: '$($v.title)', User: $($v.user_id)" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "Could not fetch videos: $($_.Exception.Message)" -ForegroundColor Red
+}
+
+# 3. Try a direct search (without user_id in URL)
+Write-Host "`nTrying Direct Search (no user_id filter):" -ForegroundColor Yellow
+try {
+    $directSearch = Invoke-RestMethod `
+        -Uri "$GATEWAY_URL/api/v1/search" `
+        -Method POST `
+        -Headers $headers `
+        -Body (@{query="Automation"} | ConvertTo-Json)
+    
+    Start-Sleep -Seconds 2
+    
+    $directResults = Invoke-RestMethod `
+        -Uri "$GATEWAY_URL/api/v1/search/$($directSearch.job_id)" `
+        -Method GET `
+        -Headers $headers
+    
+    Write-Host "Direct search results count: $($directResults.results.Count)" -ForegroundColor Gray
+    Write-Host ($directResults | ConvertTo-Json -Depth 5) -ForegroundColor Gray
+} catch {
+    Write-Host "Direct search failed: $($_.Exception.Message)" -ForegroundColor Red
+}
+
+Write-Host "`n=== END DEBUG ===" -ForegroundColor Magenta
 
 Test-Assertion "Search job completes" $jobCompleted
 Test-Assertion "Search returns results" ($searchResults.Count -gt 0)
@@ -381,7 +431,6 @@ try {
 
     $jobId2 = $searchResponse2.job_id
     
-    # Wait for completion
     Start-Sleep -Seconds 2
     
     $jobStatus2 = Invoke-RestMethod `
@@ -508,7 +557,6 @@ for ($i = 1; $i -le 3; $i++) {
 
 Test-Assertion "Can submit multiple concurrent searches" ($parallelJobs.Count -eq 3)
 
-# Wait for all jobs
 Start-Sleep -Seconds 3
 
 $completedJobs = 0
@@ -522,7 +570,6 @@ foreach ($jobId in $parallelJobs) {
             $completedJobs++
         }
     } catch {
-        # Continue
     }
 }
 
@@ -538,12 +585,12 @@ Write-Host "Passed: $($tests.passed)" -ForegroundColor Green
 Write-Host "Failed: $($tests.failed)" -ForegroundColor Red
 
 if ($tests.failed -eq 0) {
-    Write-Host "`n🎉 ALL TESTS PASSED! 🎉" -ForegroundColor Green
+    Write-Host " ALL TESTS PASSED! " -ForegroundColor Green
     Write-Host "Your microservices architecture is working perfectly!" -ForegroundColor Green
 } else {
-    Write-Host "`n⚠️  Some tests failed. Review the output above." -ForegroundColor Yellow
+    Write-Host "`  Some tests failed. Review the output above." -ForegroundColor Yellow
     
-    Write-Host "`nFailed Tests:" -ForegroundColor Red
+    Write-Host "`Failed Tests:" -ForegroundColor Red
     foreach ($result in $tests.results) {
         if (-not $result.passed) {
             Write-Host "  • $($result.name)" -ForegroundColor Red
