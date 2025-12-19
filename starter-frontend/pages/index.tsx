@@ -18,12 +18,10 @@ export default function Home() {
   const [editingVideo, setEditingVideo] = useState<any>(null);
   const [newVideo, setNewVideo] = useState({ title: '', description: '', duration: 0 });
 
-  // ✅ hydration-safe mount
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // ✅ auth logic AFTER mount
   useEffect(() => {
     if (!mounted) return;
 
@@ -44,7 +42,6 @@ export default function Home() {
     if (submitSearch.fulfilled.match(result)) {
       const jobId = result.payload.job_id;
       if (jobId) {
-        // Poll for results
         const pollResults = async () => {
           const results = await dispatch(getSearchResults({ userId: user.id, jobId }));
           if (getSearchResults.fulfilled.match(results) && results.payload.status === 'completed') {
@@ -82,7 +79,6 @@ export default function Home() {
     dispatch(fetchVideos(user.id));
   };
 
-  // ⛔ stop hydration mismatch
   if (!mounted) return null;
 
   return (
