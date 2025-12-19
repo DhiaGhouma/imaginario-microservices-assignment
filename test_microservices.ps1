@@ -1,14 +1,17 @@
 # Integration test for API Gateway + Search Service (PowerShell)
 # Verifies inter-service communication through the gateway
 
-Write-Host "Testing Microservices Integration..."
+$ErrorActionPreference = "Stop" # Stop on errors
+Write-Host "Testing Microservices Integration..." -ForegroundColor Cyan
 Write-Host "==================================="
 
 $GATEWAY_URL = "http://localhost:5000"
 
-$email = "test@example.com"
+# Randomize email to avoid "user exists" errors during rapid testing
+$id = Get-Random -Minimum 1000 -Maximum 9999
+$email = "test$id@example.com"
 $password = "test123"
-$name = "Test User"
+$name = "Test User $id"
 
 # -------------------------------
 # 1. Health check
@@ -16,135 +19,97 @@ $name = "Test User"
 Write-Host "`n1. Testing API Gateway health..."
 try {
     $health = Invoke-RestMethod "$GATEWAY_URL/health"
-    $health | ConvertTo-Json -Depth 5
+    Write-Host "Gateway Status: $($health.status)" -ForegroundColor Green
 }
 catch {
-    Write-Host "❌ Gateway health failed"
+    Write-Host "❌ Gateway is offline at $GATEWAY_URL" -ForegroundColor Red
     exit 1
 }
 
 # -------------------------------
-# 2. Register / Login
+# 2. Register User
 # -------------------------------
 Write-Host "`n2. Registering user..."
-$token = $null
-$userId = $null
-
 $registerBody = @{
     email    = $email
     password = $password
     name     = $name
 } | ConvertTo-Json
 
-try {
-    $registerResponse = Invoke-RestMethod `
-        -Uri "$GATEWAY_URL/api/v1/auth/register" `
-        -Method POST `
-        -ContentType "application/json" `
-        -Body $registerBody
+$authResponse = Invoke-RestMethod -Uri "$GATEWAY_URL/api/v1/auth/register" -Method POST -ContentType "application/json" -Body $registerBody
+$token = $authResponse.token
+$userId = $authResponse.user.id
 
-    $token = $registerResponse.token
-    $userId = $registerResponse.user.id
-}
-catch {
-    Write-Host "User probably exists, attempting login..."
-    $loginBody = @{
-        email    = $email
-        password = $password
-    } | ConvertTo-Json
-
-    try {
-        $loginResponse = Invoke-RestMethod `
-            -Uri "$GATEWAY_URL/api/v1/auth/login" `
-            -Method POST `
-            -ContentType "application/json" `
-            -Body $loginBody
-
-        $token = $loginResponse.token
-        $userId = $loginResponse.user.id
-    }
-    catch {
-        Write-Host "❌ Login failed"
-        exit 1
-    }
+Write-Host "User registered with ID: $userId"
+$headers = @{ 
+    Authorization = "Bearer $token" 
+    Accept        = "application/json"
 }
 
-Write-Host "User ID: $userId"
-Write-Host "Token acquired"
-
 # -------------------------------
-# 3. Create video
+# 3. Create video (to populate search)
 # -------------------------------
-Write-Host "`n3. Creating video..."
+Write-Host "`n3. Creating video for search indexing..."
 $videoBody = @{
-    title       = "Microservices Test"
-    description = "Search integration test"
-    duration    = 90
+    title       = "Microservices Test Video"
+    description = "Content about building microservices architecture"
+    duration    = 120
 } | ConvertTo-Json
 
-$videoResponse = Invoke-RestMethod `
-    -Uri "$GATEWAY_URL/api/v1/users/$userId/videos" `
-    -Method POST `
-    -Headers @{ Authorization = "Bearer $token" } `
-    -ContentType "application/json" `
-    -Body $videoBody
-
-$videoResponse | ConvertTo-Json -Depth 5
+$video = Invoke-RestMethod -Uri "$GATEWAY_URL/api/v1/users/$userId/videos" -Method POST -Headers $headers -ContentType "application/json" -Body $videoBody
+Write-Host "Video Created: $($video.title) (ID: $($video.id))"
 
 # -------------------------------
 # 4. Submit search job
 # -------------------------------
-Write-Host "`n4. Submitting search job..."
+Write-Host "`n4. Submitting search job via Gateway..."
 $searchBody = @{
     query = "microservices"
 } | ConvertTo-Json
 
-$searchResponse = Invoke-RestMethod `
-    -Uri "$GATEWAY_URL/api/v1/users/$userId/search" `
-    -Method POST `
-    -Headers @{ Authorization = "Bearer $token" } `
-    -ContentType "application/json" `
-    -Body $searchBody
-
-$searchResponse | ConvertTo-Json -Depth 5
+$searchResponse = Invoke-RestMethod -Uri "$GATEWAY_URL/api/v1/users/$userId/search" -Method POST -Headers $headers -ContentType "application/json" -Body $searchBody
 
 $jobId = $searchResponse.job_id
+Write-Host "Job Submitted. JobID: $jobId" -ForegroundColor Yellow
 
-if (-not $jobId) {
-    Write-Host "❌ Search job creation failed"
-    exit 1
+# -------------------------------
+# 5. Fetch search results (with Polling)
+# -------------------------------
+Write-Host "`n5. Polling for job completion..."
+$retries = 0
+$maxRetries = 5
+$jobDone = $false
+
+while ($retries -lt $maxRetries -and -not $jobDone) {
+    $result = Invoke-RestMethod -Uri "$GATEWAY_URL/api/v1/users/$userId/search/$jobId" -Method GET -Headers $headers
+    
+    if ($result.status -eq "completed") {
+        $jobDone = $true
+        Write-Host "Job Completed!" -ForegroundColor Green
+        $result | ConvertTo-Json -Depth 5
+    }
+    else {
+        Write-Host "Status: $($result.status)... waiting 2s"
+        Start-Sleep -Seconds 2
+        $retries++
+    }
 }
 
 # -------------------------------
-# 5. Fetch search results
-# -------------------------------
-Write-Host "`n5. Waiting for job completion..."
-Start-Sleep -Seconds 2
-
-try {
-    $result = Invoke-RestMethod `
-        -Uri "$GATEWAY_URL/api/v1/users/$userId/search/$jobId" `
-        -Method GET `
-        -Headers @{ Authorization = "Bearer $token" }
-
-    $result | ConvertTo-Json -Depth 5
-}
-catch {
-    Write-Host "❌ Failed to fetch search results"
-    exit 1
-}
-
-# -------------------------------
-# 6. Final status
+# 6. Final Validation
 # -------------------------------
 Write-Host ""
 Write-Host "==================================="
-
-if ($result.status -eq "completed") {
-    Write-Host "✅ SUCCESS: Gateway <-> Search Service communication verified"
+if ($jobDone) {
+    if ($result.results.Count -gt 0) {
+        Write-Host "✅ SUCCESS: Gateway <-> Search Service logic verified" -ForegroundColor Green
+        Write-Host "Found $($result.results.Count) matches."
+    }
+    else {
+        Write-Host "⚠ SUCCESS: Connection works, but no results found." -ForegroundColor Yellow
+    }
 }
 else {
-    Write-Host "⚠ WARNING: Job not completed yet (async behavior)"
+    Write-Host "❌ FAILED: Job timed out or failed to complete." -ForegroundColor Red
 }
-
 Write-Host "==================================="

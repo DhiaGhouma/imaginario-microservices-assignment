@@ -100,26 +100,27 @@ def perform_search(query, video_ids=None):
     results.sort(key=lambda x: x['relevance_score'], reverse=True)
     return results
 
-# =====================
 # BACKGROUND WORKER
-# =====================
 
 def process_search_job(job_id):
-    try:
-        job = search_jobs[job_id]
-        job['status'] = 'processing'
-        job['started_at'] = datetime.utcnow().isoformat()
+    with app.app_context():
+        try:
+            job = search_jobs[job_id]
+            job['status'] = 'processing'
+            job['started_at'] = datetime.now(datetime.UTC).isoformat()
 
-        results = perform_search(job['query'], job.get('video_ids'))
+            results = perform_search(job['query'], job.get('video_ids'))
 
-        job['status'] = 'completed'
-        job['results'] = results
-        job['completed_at'] = datetime.utcnow().isoformat()
+            job['status'] = 'completed'
+            job['results'] = results
+            job['completed_at'] = datetime.now(datetime.UTC).isoformat()
+            print(f" Job {job_id} completed successfully.")
 
-    except Exception as e:
-        job['status'] = 'failed'
-        job['error'] = str(e)
-        job['completed_at'] = datetime.utcnow().isoformat()
+        except Exception as e:
+            print(f" Job {job_id} failed: {str(e)}")
+            job['status'] = 'failed'
+            job['error'] = str(e)
+            job['completed_at'] = datetime.now(datetime.UTC).isoformat()
 
 def job_worker():
     while True:
