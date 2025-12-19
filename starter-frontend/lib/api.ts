@@ -103,33 +103,31 @@ export const authAPI = {
 
 // Video API
 export const videoAPI = {
-  listVideos: async (userId: number, page?: number, perPage?: number) => {
-    const params = new URLSearchParams();
-    if (page) params.append('page', page.toString());
-    if (perPage) params.append('per_page', perPage.toString());
-    const query = params.toString();
-    const url = `/users/${userId}/videos${query ? `?${query}` : ''}`;
-    const response = await apiClient.get(url);
+  listVideos: async (page?: number, perPage?: number) => {
+    const params: any = {};
+    if (page) params.page = page;
+    if (perPage) params.per_page = perPage;
+    const response = await apiClient.get('/videos', { params });
     return response.data;
   },
 
-  getVideo: async (userId: number, videoId: number) => {
-    const response = await apiClient.get(`/users/${userId}/videos/${videoId}`);
+  getVideo: async (videoId: number) => {
+    const response = await apiClient.get(`/videos/${videoId}`);
     return response.data;
   },
 
-  createVideo: async (userId: number, data: { title: string; description?: string; duration?: number }) => {
-    const response = await apiClient.post(`/users/${userId}/videos`, data);
+  createVideo: async (data: { title: string; description?: string; duration?: number }) => {
+    const response = await apiClient.post('/videos', data);
     return response.data;
   },
 
-  updateVideo: async (userId: number, videoId: number, data: Partial<{ title: string; description: string; duration: number }>) => {
-    const response = await apiClient.put(`/users/${userId}/videos/${videoId}`, data);
+  updateVideo: async (videoId: number, data: Partial<{ title: string; description: string; duration: number }>) => {
+    const response = await apiClient.put(`/videos/${videoId}`, data);
     return response.data;
   },
 
-  deleteVideo: async (userId: number, videoId: number) => {
-    const response = await apiClient.delete(`/users/${userId}/videos/${videoId}`);
+  deleteVideo: async (videoId: number) => {
+    const response = await apiClient.delete(`/videos/${videoId}`);
     return response.data;
   },
 };

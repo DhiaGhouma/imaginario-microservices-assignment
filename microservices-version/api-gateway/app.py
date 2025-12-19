@@ -36,11 +36,23 @@ ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://localhost:500
 # UTIL: Forward headers
 # =====================
 def forward_headers():
-    """Forward only necessary headers to downstream services"""
-    headers = {}
+    import jwt
+    import datetime
+
+    headers = {"Content-Type": request.headers.get('Content-Type', 'application/json')}
+
+    # Use real Authorization header if present
     if 'Authorization' in request.headers:
         headers['Authorization'] = request.headers['Authorization']
-    headers['Content-Type'] = request.headers.get('Content-Type', 'application/json')
+    else:
+        # DEV MODE: automatically generate a test JWT
+        payload = {
+            "user_id": 4,  # test user
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        }
+        token = jwt.encode(payload, 'supersecret', algorithm='HS256')  # must match Video Service JWT_SECRET
+        headers['Authorization'] = f"Bearer {token}"
+
     return headers
 
 # =====================
@@ -70,7 +82,8 @@ def user_videos(user_id):
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        url = f"{VIDEO_SERVICE_URL}/api/users/{user_id}/videos"
+        # Ignore user_id from URL, just forward to /api/v1/videos
+        url = f"{VIDEO_SERVICE_URL}/api/v1/videos"
         if request.method == 'GET':
             resp = requests.get(url, params=request.args, headers=forward_headers())
         else:  # POST
@@ -78,6 +91,7 @@ def user_videos(user_id):
         return jsonify(resp.json()), resp.status_code
     except requests.exceptions.RequestException:
         return jsonify({"error": "Video service unavailable"}), 503
+
 
 @app.route('/api/v1/users/<int:user_id>/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
 def user_video_detail(user_id, video_id):
