@@ -1,7 +1,3 @@
-"""
-Search Microservice
-Handles async video search with job queue
-"""
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -19,7 +15,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 CORS(app, resources={
     r"/api/*": {
-        "origins": "*",
+        "origins": ["http://localhost:3000", "http://localhost:3001"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "X-Service-Token"]
     }
@@ -30,13 +26,8 @@ db = SQLAlchemy(app)
 job_queue = Queue()
 search_jobs = {}
 
-# =====================
-# MODELS
-# =====================
-
 class Video(db.Model):
     __tablename__ = 'videos'
-
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, nullable=False)
     title = db.Column(db.String(200), nullable=False)
@@ -44,11 +35,7 @@ class Video(db.Model):
     duration = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-# =====================
-# SEARCH LOGIC
-# =====================
-
-def perform_search(query, video_ids=None):
+def perform_search(query, user_id=None):
     if not query:
         return []
 
@@ -56,8 +43,8 @@ def perform_search(query, video_ids=None):
     query_words = query_lower.split()
 
     video_query = Video.query
-    if video_ids:
-        video_query = video_query.filter(Video.id.in_(video_ids))
+    if user_id:
+        video_query = video_query.filter(Video.user_id == user_id)
 
     videos = video_query.all()
     results = []
@@ -65,8 +52,8 @@ def perform_search(query, video_ids=None):
     for video in videos:
         score = 0.0
         matched_parts = []
-
         title_lower = (video.title or '').lower()
+        
         if query_lower in title_lower:
             score += 0.7
             matched_parts.append(video.title)
@@ -100,27 +87,23 @@ def perform_search(query, video_ids=None):
     results.sort(key=lambda x: x['relevance_score'], reverse=True)
     return results
 
-# BACKGROUND WORKER
-
 def process_search_job(job_id):
     with app.app_context():
         try:
             job = search_jobs[job_id]
             job['status'] = 'processing'
-            job['started_at'] = datetime.now(datetime.UTC).isoformat()
+            job['started_at'] = datetime.utcnow().isoformat()
 
-            results = perform_search(job['query'], job.get('video_ids'))
+            results = perform_search(job['query'], job.get('user_id'))
 
             job['status'] = 'completed'
             job['results'] = results
-            job['completed_at'] = datetime.now(datetime.UTC).isoformat()
-            print(f" Job {job_id} completed successfully.")
+            job['completed_at'] = datetime.utcnow().isoformat()
 
         except Exception as e:
-            print(f" Job {job_id} failed: {str(e)}")
             job['status'] = 'failed'
             job['error'] = str(e)
-            job['completed_at'] = datetime.now(datetime.UTC).isoformat()
+            job['completed_at'] = datetime.utcnow().isoformat()
 
 def job_worker():
     while True:
@@ -132,10 +115,6 @@ def job_worker():
 
 threading.Thread(target=job_worker, daemon=True).start()
 
-# =====================
-# ROUTES
-# =====================
-
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({
@@ -144,21 +123,19 @@ def health():
         'jobs_pending': job_queue.qsize()
     })
 
-# SUBMIT SEARCH JOB
 @app.route('/api/v1/search', methods=['POST'])
 def create_search():
-    data = request.json
-
-    if not data or not data.get('query'):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data.get('query'):
         return jsonify({'error': 'Query required'}), 400
 
     job_id = str(uuid.uuid4())
-
+    # Extract user_id and video_ids from the forwarded request
     job = {
         'id': job_id,
         'query': data['query'],
-        'video_ids': data.get('video_ids'),
-        'user_id': data.get('user_id'),
+        'user_id': data.get('user_id') or data.get('userId'),
+        'video_ids': data.get('video_ids'), # Added this
         'status': 'pending',
         'created_at': datetime.utcnow().isoformat(),
         'results': [],
@@ -172,15 +149,12 @@ def create_search():
         'job_id': job_id,
         'status': 'pending'
     }), 202
-
-# GET SEARCH RESULTS
 @app.route('/api/v1/search/<job_id>', methods=['GET'])
 def get_search_results(job_id):
     if job_id not in search_jobs:
         return jsonify({'error': 'Job not found'}), 404
 
     job = search_jobs[job_id]
-
     response = {
         'job_id': job['id'],
         'query': job['query'],
@@ -196,26 +170,19 @@ def get_search_results(job_id):
 
     return jsonify(response)
 
-# LIST JOBS (DASHBOARD)
 @app.route('/api/v1/search/jobs', methods=['GET'])
 def list_jobs():
-    user_id = request.args.get('user_id')
-
+    user_id = request.args.get('user_id') or request.args.get('userId')
     jobs = list(search_jobs.values())
 
     if user_id:
         jobs = [j for j in jobs if str(j.get('user_id')) == str(user_id)]
 
     jobs.sort(key=lambda x: x['created_at'], reverse=True)
-
     return jsonify({
         'jobs': jobs[:50],
         'total': len(jobs)
     })
-
-# =====================
-# RUN
-# =====================
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5001))

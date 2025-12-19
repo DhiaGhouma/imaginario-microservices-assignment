@@ -93,6 +93,37 @@ def user_videos_proxy(user_id, video_id=None):
 # =====================
 # SEARCH ROUTES
 # =====================
+@app.route('/api/v1/users/<int:user_id>/search', methods=['POST', 'OPTIONS'])
+def user_search_proxy(user_id):
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        data = request.get_json(silent=True) or {}
+        # Explicitly set BOTH casing styles to ensure Search Service catches it
+        data['user_id'] = user_id
+        data['userId'] = user_id 
+        
+        resp = requests.post(
+            f"{SEARCH_SERVICE_URL}/api/v1/search", 
+            json=data, 
+            headers=forward_headers()
+        )
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+@app.route('/api/v1/users/<int:user_id>/search/<job_id>', methods=['GET', 'OPTIONS'])
+def user_search_results_proxy(user_id, job_id):
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        resp = requests.get(
+            f"{SEARCH_SERVICE_URL}/api/v1/search/{job_id}", 
+            headers=forward_headers()
+        )
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
 @app.route('/api/v1/search', methods=['POST', 'OPTIONS'])
 def search():
     if request.method == 'OPTIONS':
