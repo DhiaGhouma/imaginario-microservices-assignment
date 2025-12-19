@@ -9,7 +9,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URI', 'sqlite:///../shared/database.db'
+    'DATABASE_URI', 'sqlite:///C:/Users/DELL/Downloads/Internship-technical-assessment/Internship-technical-assessment/microservices-version/shared/database.db'
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 

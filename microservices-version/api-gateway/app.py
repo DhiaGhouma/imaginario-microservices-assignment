@@ -77,7 +77,7 @@ def user_videos_proxy(user_id, video_id=None):
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        url = f"{VIDEO_SERVICE_URL}/api/v1/users/{user_id}/videos" + (f"/{video_id}" if video_id else "")
+        url = f"{VIDEO_SERVICE_URL}/api/v1/videos" + (f"/{video_id}" if video_id else "")
         if request.method == 'GET':
             resp = requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
         elif request.method == 'POST':
