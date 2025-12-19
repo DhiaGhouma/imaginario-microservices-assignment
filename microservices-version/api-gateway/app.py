@@ -37,6 +37,39 @@ ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://localhost:500
 JWT_SECRET = os.getenv('JWT_SECRET')
 
 # =====================
+# AUTHENTICATION HELPER
+# =====================
+def validate_user_access(requested_user_id):
+    """
+    Validate that authenticated user matches requested user_id
+    Returns: (is_valid, error_response)
+    """
+    auth_header = request.headers.get('Authorization', '')
+    
+    if not auth_header.startswith('Bearer '):
+        return False, (jsonify({'error': 'Unauthorized - No token provided'}), 401)
+    
+    token = auth_header[7:]  # Remove 'Bearer ' prefix
+    
+    try:
+        # Decode JWT to get user_id
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        authenticated_user_id = payload.get('user_id')
+        
+        # Check if authenticated user matches requested user
+        if authenticated_user_id != requested_user_id:
+            return False, (jsonify({'error': 'Forbidden - Cannot access other user\'s data'}), 403)
+        
+        return True, None  # Validation passed
+        
+    except jwt.ExpiredSignatureError:
+        return False, (jsonify({'error': 'Token expired'}), 401)
+    except jwt.InvalidTokenError:
+        return False, (jsonify({'error': 'Invalid token'}), 401)
+    except Exception as e:
+        return False, (jsonify({'error': 'Authentication failed'}), 401)
+
+# =====================
 # CUSTOM CIRCUIT BREAKER
 # =====================
 class CircuitBreakerOpenException(Exception):
@@ -92,21 +125,39 @@ def forward_headers():
     return headers
 
 # =====================
-# VIDEO ROUTES
+# VIDEO ROUTES (No user validation - direct service access)
 # =====================
 @app.route('/api/v1/videos', methods=['GET', 'POST', 'OPTIONS'])
-@app.route('/api/v1/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
-def videos(video_id=None):
+def videos_collection():
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        url = f"{VIDEO_SERVICE_URL}/api/v1/videos" + (f"/{video_id}" if video_id else "")
+        url = f"{VIDEO_SERVICE_URL}/api/v1/videos"
         
         def call_service():
             if request.method == 'GET':
-                return requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
+                return requests.get(url, params=request.args, headers=forward_headers())
             elif request.method == 'POST':
                 return requests.post(url, json=request.json, headers=forward_headers())
+
+        resp = video_circuit.call(call_service)
+        return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerOpenException:
+        return jsonify({"error": "Video service temporarily unavailable", "fallback": True}), 503
+    except requests.exceptions.RequestException:
+        return jsonify({"error": "Video service unavailable"}), 503
+
+
+@app.route('/api/v1/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
+def videos_item(video_id):
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        url = f"{VIDEO_SERVICE_URL}/api/v1/videos/{video_id}"
+        
+        def call_service():
+            if request.method == 'GET':
+                return requests.get(url, headers=forward_headers())
             elif request.method == 'PUT':
                 return requests.put(url, json=request.json, headers=forward_headers())
             else:  # DELETE
@@ -120,21 +171,53 @@ def videos(video_id=None):
         return jsonify({"error": "Video service unavailable"}), 503
 
 # =====================
-# USER VIDEO ROUTES
+# USER VIDEO ROUTES (With user validation)
 # =====================
 @app.route('/api/v1/users/<int:user_id>/videos', methods=['GET', 'POST', 'OPTIONS'])
-@app.route('/api/v1/users/<int:user_id>/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
-def user_videos_proxy(user_id, video_id=None):
+def user_videos_collection(user_id):
+    """Handle /users/<id>/videos endpoint"""
     if request.method == 'OPTIONS':
         return '', 200
+    
+    # Validate user access
+    is_valid, error_response = validate_user_access(user_id)
+    if not is_valid:
+        return error_response
+    
     try:
-        url = f"{VIDEO_SERVICE_URL}/api/v1/videos" + (f"/{video_id}" if video_id else "")
+        url = f"{VIDEO_SERVICE_URL}/api/v1/videos"
         
         def call_service():
             if request.method == 'GET':
-                return requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
+                return requests.get(url, params=request.args, headers=forward_headers())
             elif request.method == 'POST':
                 return requests.post(url, json=request.json, headers=forward_headers())
+                
+        resp = video_circuit.call(call_service)
+        return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerOpenException:
+        return jsonify({"error": "Video service temporarily unavailable", "fallback": True}), 503
+    except requests.exceptions.RequestException:
+        return jsonify({"error": "Video service unavailable"}), 503
+
+
+@app.route('/api/v1/users/<int:user_id>/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
+def user_videos_item(user_id, video_id):
+    """Handle /users/<id>/videos/<video_id> endpoint"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    # Validate user access
+    is_valid, error_response = validate_user_access(user_id)
+    if not is_valid:
+        return error_response
+    
+    try:
+        url = f"{VIDEO_SERVICE_URL}/api/v1/videos/{video_id}"
+        
+        def call_service():
+            if request.method == 'GET':
+                return requests.get(url, headers=forward_headers())
             elif request.method == 'PUT':
                 return requests.put(url, json=request.json, headers=forward_headers())
             elif request.method == 'DELETE':
@@ -148,12 +231,19 @@ def user_videos_proxy(user_id, video_id=None):
         return jsonify({"error": "Video service unavailable"}), 503
 
 # =====================
-# SEARCH ROUTES
+# SEARCH ROUTES (With user validation)
 # =====================
 @app.route('/api/v1/users/<int:user_id>/search', methods=['POST', 'OPTIONS'])
-def user_search_proxy(user_id):
+def user_search_submit(user_id):
+    """Submit search for user"""
     if request.method == 'OPTIONS':
         return '', 200
+    
+    # Validate user access
+    is_valid, error_response = validate_user_access(user_id)
+    if not is_valid:
+        return error_response
+    
     try:
         data = request.get_json(silent=True) or {}
         # Explicitly set BOTH casing styles to ensure Search Service catches it
@@ -174,10 +264,18 @@ def user_search_proxy(user_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 503
 
+
 @app.route('/api/v1/users/<int:user_id>/search/<job_id>', methods=['GET', 'OPTIONS'])
-def user_search_results_proxy(user_id, job_id):
+def user_search_results(user_id, job_id):
+    """Get search results for user"""
     if request.method == 'OPTIONS':
         return '', 200
+    
+    # Validate user access
+    is_valid, error_response = validate_user_access(user_id)
+    if not is_valid:
+        return error_response
+    
     try:
         def call_service():
             return requests.get(
@@ -192,6 +290,9 @@ def user_search_results_proxy(user_id, job_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 503
 
+# =====================
+# DIRECT SEARCH ROUTES (No user validation)
+# =====================
 @app.route('/api/v1/search', methods=['POST', 'OPTIONS'])
 def search():
     if request.method == 'OPTIONS':
@@ -207,6 +308,7 @@ def search():
     except requests.exceptions.RequestException:
         return jsonify({"error": "Search service unavailable"}), 503
 
+
 @app.route('/api/v1/search/<job_id>', methods=['GET', 'OPTIONS'])
 def search_results(job_id):
     if request.method == 'OPTIONS':
@@ -221,6 +323,27 @@ def search_results(job_id):
         return jsonify({"error": "Search service temporarily unavailable", "status": "failed"}), 503
     except requests.exceptions.RequestException:
         return jsonify({"error": "Search service unavailable"}), 503
+
+
+@app.route('/api/v1/search/jobs', methods=['GET', 'OPTIONS'])
+def search_jobs_list():
+    """List search jobs (for developer dashboard)"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        def call_service():
+            return requests.get(
+                f"{SEARCH_SERVICE_URL}/api/v1/search/jobs", 
+                params=request.args,
+                headers=forward_headers()
+            )
+            
+        resp = search_circuit.call(call_service)
+        return jsonify(resp.json()), resp.status_code
+    except CircuitBreakerOpenException:
+        return jsonify({"error": "Search service temporarily unavailable", "jobs": [], "total": 0}), 503
+    except requests.exceptions.RequestException:
+        return jsonify({"error": "Search service unavailable", "jobs": [], "total": 0}), 503
 
 # =====================
 # AUTH ROUTES

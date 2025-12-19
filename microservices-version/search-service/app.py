@@ -130,12 +130,11 @@ def create_search():
         return jsonify({'error': 'Query required'}), 400
 
     job_id = str(uuid.uuid4())
-    # Extract user_id and video_ids from the forwarded request
     job = {
         'id': job_id,
         'query': data['query'],
         'user_id': data.get('user_id') or data.get('userId'),
-        'video_ids': data.get('video_ids'), # Added this
+        'video_ids': data.get('video_ids'),
         'status': 'pending',
         'created_at': datetime.utcnow().isoformat(),
         'results': [],
