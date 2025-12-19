@@ -1,17 +1,10 @@
-/**
- * API Client
- * 
- * TODO: Candidates should complete this API client to:
- * 1. Handle authentication (JWT token storage)
- * 2. Add all necessary API methods
- * 3. Handle errors properly
- */
+
 
 import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-// Create axios instance
+
 const apiClient = axios.create({
   baseURL: `${API_URL}/api/v1`,
   headers: {
@@ -19,21 +12,16 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor to add auth token
 apiClient.interceptors.request.use(
   (config) => {
-    // TODO: Get JWT token from storage and add to headers
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
-// Analytics API (for Developer Dashboard)
 export const analyticsAPI = {
   getOverview: async () => {
     const response = await apiClient.get('/analytics/overview');

@@ -11,8 +11,7 @@ export default function Home() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { user, isAuthenticated } = useSelector((state: RootState) => state.auth);
-  const { videos, loading: videosLoading } = useSelector((state: RootState) => state.videos);
-  const { results: searchResults, loading: searchLoading } = useSelector((state: RootState) => state.search);
+  const { videos = [], loading: videosLoading } = useSelector((state: RootState) => state.videos); const { results: searchResults, loading: searchLoading } = useSelector((state: RootState) => state.search);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -33,7 +32,7 @@ export default function Home() {
 
     dispatch(clearResults());
     const result = await dispatch(submitSearch({ userId: user.id, query: searchQuery }));
-    
+
     if (submitSearch.fulfilled.match(result)) {
       const jobId = result.payload.job_id;
       if (jobId) {

@@ -20,7 +20,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# CORS
 CORS(app, resources={
     r"/api/*": {
         "origins": ["http://localhost:3000", "http://localhost:3001"],
@@ -34,7 +33,7 @@ db = SQLAlchemy(app)
 # =====================
 # JWT CONFIG
 # =====================
-JWT_SECRET = os.getenv('JWT_SECRET', 'supersecret')
+JWT_SECRET = os.getenv('JWT_SECRET')
 JWT_ALGORITHM = 'HS256'
 
 def get_current_user_id():

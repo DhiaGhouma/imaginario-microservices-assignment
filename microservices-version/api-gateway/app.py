@@ -7,6 +7,8 @@ import requests
 import os
 from flask_cors import CORS
 from dotenv import load_dotenv
+import jwt
+import datetime
 
 load_dotenv()
 
@@ -31,28 +33,17 @@ VIDEO_SERVICE_URL = os.getenv('VIDEO_SERVICE_URL', 'http://localhost:5003')
 SEARCH_SERVICE_URL = os.getenv('SEARCH_SERVICE_URL', 'http://localhost:5001')
 AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://localhost:5002')
 ANALYTICS_SERVICE_URL = os.getenv('ANALYTICS_SERVICE_URL', 'http://localhost:5004')
+JWT_SECRET = os.getenv('JWT_SECRET')
 
 # =====================
 # UTIL: Forward headers
 # =====================
 def forward_headers():
-    import jwt
-    import datetime
-
     headers = {"Content-Type": request.headers.get('Content-Type', 'application/json')}
-
-    # Use real Authorization header if present
-    if 'Authorization' in request.headers:
-        headers['Authorization'] = request.headers['Authorization']
-    else:
-        # DEV MODE: automatically generate a test JWT
-        payload = {
-            "user_id": 4,  # test user
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
-        }
-        token = jwt.encode(payload, 'supersecret', algorithm='HS256')  # must match Video Service JWT_SECRET
-        headers['Authorization'] = f"Bearer {token}"
-
+    auth_header = request.headers.get('Authorization')
+    
+    if auth_header:
+        headers['Authorization'] = auth_header
     return headers
 
 # =====================
@@ -64,7 +55,7 @@ def videos(video_id=None):
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        url = f"{VIDEO_SERVICE_URL}/api/videos" + (f"/{video_id}" if video_id else "")
+        url = f"{VIDEO_SERVICE_URL}/api/v1/videos" + (f"/{video_id}" if video_id else "")
         if request.method == 'GET':
             resp = requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
         elif request.method == 'POST':
@@ -77,33 +68,23 @@ def videos(video_id=None):
     except requests.exceptions.RequestException:
         return jsonify({"error": "Video service unavailable"}), 503
 
+# =====================
+# USER VIDEO ROUTES
+# =====================
 @app.route('/api/v1/users/<int:user_id>/videos', methods=['GET', 'POST', 'OPTIONS'])
-def user_videos(user_id):
-    if request.method == 'OPTIONS':
-        return '', 200
-    try:
-        # Ignore user_id from URL, just forward to /api/v1/videos
-        url = f"{VIDEO_SERVICE_URL}/api/v1/videos"
-        if request.method == 'GET':
-            resp = requests.get(url, params=request.args, headers=forward_headers())
-        else:  # POST
-            resp = requests.post(url, json=request.json, headers=forward_headers())
-        return jsonify(resp.json()), resp.status_code
-    except requests.exceptions.RequestException:
-        return jsonify({"error": "Video service unavailable"}), 503
-
-
 @app.route('/api/v1/users/<int:user_id>/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
-def user_video_detail(user_id, video_id):
+def user_videos_proxy(user_id, video_id=None):
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        url = f"{VIDEO_SERVICE_URL}/api/users/{user_id}/videos/{video_id}"
+        url = f"{VIDEO_SERVICE_URL}/api/v1/users/{user_id}/videos" + (f"/{video_id}" if video_id else "")
         if request.method == 'GET':
-            resp = requests.get(url, headers=forward_headers())
+            resp = requests.get(url, params=request.args if not video_id else None, headers=forward_headers())
+        elif request.method == 'POST':
+            resp = requests.post(url, json=request.json, headers=forward_headers())
         elif request.method == 'PUT':
             resp = requests.put(url, json=request.json, headers=forward_headers())
-        else:  # DELETE
+        elif request.method == 'DELETE':
             resp = requests.delete(url, headers=forward_headers())
         return jsonify(resp.json()), resp.status_code
     except requests.exceptions.RequestException:
