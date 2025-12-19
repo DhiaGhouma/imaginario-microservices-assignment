@@ -109,6 +109,26 @@ stateDiagram-v2
 
 ---
 
+## API Documentation
+
+The platform provides interactive **Swagger/OpenAPI** documentation for all microservices. This allows developers to explore endpoints, test requests, and view response schemas directly from the browser.
+
+### Accessing Swagger UI
+
+Once the services are running, you can access the documentation at the following URLs:
+
+| Service | Swagger UI URL | Description |
+| :--- | :--- | :--- |
+| **API Gateway** | [http://localhost:5000/apidocs](http://localhost:5000/apidocs) | Main entry point documentation. |
+| **Auth Service** | [http://localhost:5002/apidocs](http://localhost:5002/apidocs) | User registration, login, and key management. |
+| **Video Service** | [http://localhost:5003/apidocs](http://localhost:5003/apidocs) | Video CRUD operations. |
+| **Search Service** | [http://localhost:5001/apidocs](http://localhost:5001/apidocs) | Search job submission and results. |
+| **Analytics Service** | [http://localhost:5004/apidocs](http://localhost:5004/apidocs) | Analytics logging and retrieval. |
+
+> **Note**: You must install the `flasgger` dependency (`pip install flasgger`) for the documentation to work.
+
+---
+
 ## Setup Instructions (Local Dev)
 
 ### Prerequisites
