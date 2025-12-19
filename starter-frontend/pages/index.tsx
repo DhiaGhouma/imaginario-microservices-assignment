@@ -1,30 +1,38 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import Link from 'next/link';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '@/lib/store';
 import { fetchVideos, createVideo, updateVideo, deleteVideo } from '@/lib/slices/videoSlice';
 import { submitSearch, getSearchResults, clearResults } from '@/lib/slices/searchSlice';
-import { logout } from '@/lib/slices/authSlice';
 
 export default function Home() {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
   const { user, isAuthenticated } = useSelector((state: RootState) => state.auth);
-  const { videos = [], loading: videosLoading } = useSelector((state: RootState) => state.videos); const { results: searchResults, loading: searchLoading } = useSelector((state: RootState) => state.search);
+  const { videos = [], loading: videosLoading } = useSelector((state: RootState) => state.videos);
+  const { results: searchResults, loading: searchLoading } = useSelector((state: RootState) => state.search);
 
+  const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingVideo, setEditingVideo] = useState<any>(null);
   const [newVideo, setNewVideo] = useState({ title: '', description: '', duration: 0 });
 
+  // ✅ hydration-safe mount
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // ✅ auth logic AFTER mount
+  useEffect(() => {
+    if (!mounted) return;
+
     if (!isAuthenticated || !user) {
       router.push('/login');
       return;
     }
     dispatch(fetchVideos(user.id));
-  }, [dispatch, isAuthenticated, user, router]);
+  }, [mounted, isAuthenticated, user, dispatch, router]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,16 +82,12 @@ export default function Home() {
     dispatch(fetchVideos(user.id));
   };
 
-  if (!isAuthenticated || !user) {
-    return null;
-  }
+  // ⛔ stop hydration mismatch
+  if (!mounted) return null;
 
   return (
     <>
-
-
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <section className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           {/* Search Section */}
           <div className="mb-6 bg-white p-6 rounded-lg shadow">
@@ -167,7 +171,7 @@ export default function Home() {
             )}
           </div>
         </div>
-      </main>
+      </section>
 
       {/* Create Video Modal */}
       {showCreateModal && (

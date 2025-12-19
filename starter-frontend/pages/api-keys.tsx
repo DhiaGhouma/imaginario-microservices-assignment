@@ -50,7 +50,7 @@ export default function ApiKeys() {
 
 
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">API Keys</h2>
@@ -158,7 +158,7 @@ export default function ApiKeys() {
             )}
           </div>
         </div>
-      </main>
+      </div>
     </>
   );
 }
