@@ -1,11 +1,13 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flasgger import Swagger
 import os
 from datetime import datetime
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
+Swagger(app)
 
 # =====================
 # Database Config
@@ -34,6 +36,30 @@ class ApiRequestLog(db.Model):
 # =====================
 @app.route('/api/v1/analytics/overview', methods=['GET', 'OPTIONS'])
 def overview():
+    """
+    Get analytics overview for a user
+    ---
+    parameters:
+      - name: user_id
+        in: query
+        type: integer
+        required: false
+        default: 1
+    responses:
+      200:
+        description: Analytics overview data
+        schema:
+          type: object
+          properties:
+            total_requests:
+              type: integer
+            success_rate:
+              type: number
+            avg_response_time:
+              type: number
+            requests_by_endpoint:
+              type: object
+    """
     if request.method == 'OPTIONS':
         return '', 200
 
@@ -58,6 +84,13 @@ def overview():
 
 @app.route('/health', methods=['GET'])
 def health():
+    """
+    Health check endpoint
+    ---
+    responses:
+      200:
+        description: Service is healthy
+    """
     return jsonify({'status': 'healthy', 'service': 'analytics-service'}), 200
 
 # =====================
@@ -65,6 +98,30 @@ def health():
 # =====================
 @app.route('/api/v1/analytics/log', methods=['POST'])
 def log_request():
+    """
+    Log an API request
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+            endpoint:
+              type: string
+            status_code:
+              type: integer
+            response_time:
+              type: number
+    responses:
+      201:
+        description: Log created
+      400:
+        description: Missing data
+    """
     data = request.json
     if not data:
         return jsonify({'error': 'Missing request data'}), 400

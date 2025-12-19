@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import jwt
 from dotenv import load_dotenv
+from flasgger import Swagger
 
 load_dotenv()
 
@@ -19,6 +20,7 @@ CORS(app, resources={
         "allow_headers": ["Content-Type", "Authorization"]
     }
 })
+Swagger(app)
 
 db = SQLAlchemy(app)
 
@@ -48,6 +50,44 @@ class Video(db.Model):
 
 @app.route('/api/v1/videos', methods=['GET', 'POST', 'OPTIONS'])
 def videos():
+    """
+    Manage videos collection
+    ---
+    parameters:
+      - name: title
+        in: query
+        type: string
+        required: false
+      - name: min_duration
+        in: query
+        type: integer
+        required: false
+      - name: max_duration
+        in: query
+        type: integer
+        required: false
+      - name: body
+        in: body
+        required: false
+        schema:
+          type: object
+          properties:
+            title:
+              type: string
+            description:
+              type: string
+            duration:
+              type: integer
+    responses:
+      200:
+        description: List of videos
+      201:
+        description: Video created
+      400:
+        description: Invalid input
+      401:
+        description: Unauthorized
+    """
     user_id = get_current_user_id()
     if not user_id:
         return jsonify({'error': 'Unauthorized'}), 401
@@ -98,6 +138,34 @@ def videos():
 
 @app.route('/api/v1/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
 def video_detail(video_id):
+    """
+    Manage single video
+    ---
+    parameters:
+      - name: video_id
+        in: path
+        type: integer
+        required: true
+      - name: body
+        in: body
+        required: false
+        schema:
+          type: object
+          properties:
+            title:
+              type: string
+            description:
+              type: string
+            duration:
+              type: integer
+    responses:
+      200:
+        description: Video details or updated
+      401:
+        description: Unauthorized
+      404:
+        description: Video not found
+    """
     user_id = get_current_user_id()
     if not user_id:
         return jsonify({'error': 'Unauthorized'}), 401
@@ -138,6 +206,13 @@ def video_detail(video_id):
 
 @app.route('/health', methods=['GET'])
 def health():
+    """
+    Health check endpoint
+    ---
+    responses:
+      200:
+        description: Service is healthy
+    """
     return jsonify({'status': 'healthy', 'service': 'video-service'}), 200
 
 if __name__ == '__main__':

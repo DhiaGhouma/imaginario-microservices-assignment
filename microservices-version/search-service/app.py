@@ -6,6 +6,7 @@ import uuid
 import threading
 from queue import Queue
 from datetime import datetime
+from flasgger import Swagger
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
@@ -20,6 +21,7 @@ CORS(app, resources={
         "allow_headers": ["Content-Type", "Authorization", "X-Service-Token"]
     }
 })
+Swagger(app)
 
 db = SQLAlchemy(app)
 
@@ -41,8 +43,6 @@ def perform_search(query, user_id=None):
 
     query_lower = query.lower()
     query_words = query_lower.split()
-
-    # EASIEST FIX: Search ALL videos, don't filter by user_id
     videos = Video.query.all()
 
     results = []
@@ -115,6 +115,13 @@ threading.Thread(target=job_worker, daemon=True).start()
 
 @app.route('/health', methods=['GET'])
 def health():
+    """
+    Health check endpoint
+    ---
+    responses:
+      200:
+        description: Service is healthy
+    """
     return jsonify({
         'status': 'healthy',
         'service': 'search-service',
@@ -123,6 +130,26 @@ def health():
 
 @app.route('/api/v1/search', methods=['POST'])
 def create_search():
+    """
+    Create a new search job
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            query:
+              type: string
+            user_id:
+              type: integer
+    responses:
+      202:
+        description: Job created
+      400:
+        description: Query required
+    """
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or not data.get('query'):
         return jsonify({'error': 'Query required'}), 400
@@ -149,6 +176,20 @@ def create_search():
 
 @app.route('/api/v1/search/<job_id>', methods=['GET'])
 def get_search_results(job_id):
+    """
+    Get search results by job ID
+    ---
+    parameters:
+      - name: job_id
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Search results
+      404:
+        description: Job not found
+    """
     if job_id not in search_jobs:
         return jsonify({'error': 'Job not found'}), 404
 
@@ -170,6 +211,18 @@ def get_search_results(job_id):
 
 @app.route('/api/v1/search/jobs', methods=['GET'])
 def list_jobs():
+    """
+    List search jobs
+    ---
+    parameters:
+      - name: user_id
+        in: query
+        type: integer
+        required: false
+    responses:
+      200:
+        description: List of jobs
+    """
     user_id = request.args.get('user_id') or request.args.get('userId')
     jobs = list(search_jobs.values())
 

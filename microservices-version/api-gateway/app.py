@@ -10,10 +10,12 @@ from dotenv import load_dotenv
 import jwt
 import datetime
 import time
+from flasgger import Swagger
 
 load_dotenv()
 
 app = Flask(__name__)
+Swagger(app)
 
 # =====================
 # CORS Setup
@@ -49,18 +51,16 @@ def validate_user_access(requested_user_id):
     if not auth_header.startswith('Bearer '):
         return False, (jsonify({'error': 'Unauthorized - No token provided'}), 401)
     
-    token = auth_header[7:]  # Remove 'Bearer ' prefix
+    token = auth_header[7:]  
     
     try:
-        # Decode JWT to get user_id
         payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
         authenticated_user_id = payload.get('user_id')
         
-        # Check if authenticated user matches requested user
         if authenticated_user_id != requested_user_id:
             return False, (jsonify({'error': 'Forbidden - Cannot access other user\'s data'}), 403)
         
-        return True, None  # Validation passed
+        return True, None  
         
     except jwt.ExpiredSignatureError:
         return False, (jsonify({'error': 'Token expired'}), 401)
@@ -92,7 +92,7 @@ class SimpleCircuitBreaker:
 
         try:
             result = func()
-            # If we succeed in HALF_OPEN, reset
+           
             if self.state == "HALF_OPEN":
                 self.reset()
             return result
@@ -129,6 +129,19 @@ def forward_headers():
 # =====================
 @app.route('/api/v1/videos', methods=['GET', 'POST', 'OPTIONS'])
 def videos_collection():
+    """
+    Proxy to Video Service (Collection)
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: false
+        schema:
+          type: object
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     try:
@@ -150,6 +163,18 @@ def videos_collection():
 
 @app.route('/api/v1/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
 def videos_item(video_id):
+    """
+    Proxy to Video Service (Item)
+    ---
+    parameters:
+      - name: video_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     try:
@@ -160,7 +185,7 @@ def videos_item(video_id):
                 return requests.get(url, headers=forward_headers())
             elif request.method == 'PUT':
                 return requests.put(url, json=request.json, headers=forward_headers())
-            else:  # DELETE
+            else: 
                 return requests.delete(url, headers=forward_headers())
 
         resp = video_circuit.call(call_service)
@@ -175,11 +200,21 @@ def videos_item(video_id):
 # =====================
 @app.route('/api/v1/users/<int:user_id>/videos', methods=['GET', 'POST', 'OPTIONS'])
 def user_videos_collection(user_id):
-    """Handle /users/<id>/videos endpoint"""
+    """
+    Handle /users/<id>/videos endpoint
+    ---
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     
-    # Validate user access
     is_valid, error_response = validate_user_access(user_id)
     if not is_valid:
         return error_response
@@ -203,11 +238,25 @@ def user_videos_collection(user_id):
 
 @app.route('/api/v1/users/<int:user_id>/videos/<int:video_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
 def user_videos_item(user_id, video_id):
-    """Handle /users/<id>/videos/<video_id> endpoint"""
+    """
+    Handle /users/<id>/videos/<video_id> endpoint
+    ---
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+      - name: video_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     
-    # Validate user access
     is_valid, error_response = validate_user_access(user_id)
     if not is_valid:
         return error_response
@@ -235,18 +284,27 @@ def user_videos_item(user_id, video_id):
 # =====================
 @app.route('/api/v1/users/<int:user_id>/search', methods=['POST', 'OPTIONS'])
 def user_search_submit(user_id):
-    """Submit search for user"""
+    """
+    Submit search for user
+    ---
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     
-    # Validate user access
     is_valid, error_response = validate_user_access(user_id)
     if not is_valid:
         return error_response
     
     try:
         data = request.get_json(silent=True) or {}
-        # Explicitly set BOTH casing styles to ensure Search Service catches it
         data['user_id'] = user_id
         data['userId'] = user_id 
         
@@ -267,11 +325,25 @@ def user_search_submit(user_id):
 
 @app.route('/api/v1/users/<int:user_id>/search/<job_id>', methods=['GET', 'OPTIONS'])
 def user_search_results(user_id, job_id):
-    """Get search results for user"""
+    """
+    Get search results for user
+    ---
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+      - name: job_id
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     
-    # Validate user access
     is_valid, error_response = validate_user_access(user_id)
     if not is_valid:
         return error_response
@@ -295,6 +367,13 @@ def user_search_results(user_id, job_id):
 # =====================
 @app.route('/api/v1/search', methods=['POST', 'OPTIONS'])
 def search():
+    """
+    Direct search endpoint
+    ---
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     try:
@@ -311,6 +390,18 @@ def search():
 
 @app.route('/api/v1/search/<job_id>', methods=['GET', 'OPTIONS'])
 def search_results(job_id):
+    """
+    Direct search results endpoint
+    ---
+    parameters:
+      - name: job_id
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     try:
@@ -327,7 +418,13 @@ def search_results(job_id):
 
 @app.route('/api/v1/search/jobs', methods=['GET', 'OPTIONS'])
 def search_jobs_list():
-    """List search jobs (for developer dashboard)"""
+    """
+    List search jobs (for developer dashboard)
+    ---
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     try:
@@ -350,6 +447,18 @@ def search_jobs_list():
 # =====================
 @app.route('/api/v1/auth/<path:path>', methods=['GET', 'POST', 'DELETE', 'OPTIONS'])
 def auth_proxy(path):
+    """
+    Proxy to Auth Service
+    ---
+    parameters:
+      - name: path
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     url = f"{AUTH_SERVICE_URL}/api/v1/auth/{path}"
@@ -359,7 +468,7 @@ def auth_proxy(path):
                 return requests.post(url, json=request.json, headers=forward_headers())
             elif request.method == 'GET':
                 return requests.get(url, headers=forward_headers(), params=request.args)
-            else:  # DELETE
+            else:  
                 return requests.delete(url, headers=forward_headers())
                 
         resp = auth_circuit.call(call_service)
@@ -374,6 +483,13 @@ def auth_proxy(path):
 # =====================
 @app.route('/api/v1/analytics/overview', methods=['GET', 'OPTIONS'])
 def analytics_overview():
+    """
+    Proxy to Analytics Service
+    ---
+    responses:
+      200:
+        description: Success
+    """
     if request.method == 'OPTIONS':
         return '', 200
     try:
@@ -392,6 +508,13 @@ def analytics_overview():
 # =====================
 @app.route('/health', methods=['GET'])
 def health():
+    """
+    Health check endpoint
+    ---
+    responses:
+      200:
+        description: Service is healthy
+    """
     return jsonify({'status':'healthy','service':'api-gateway'}), 200
 
 # =====================

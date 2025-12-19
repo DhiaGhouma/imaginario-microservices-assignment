@@ -12,6 +12,7 @@ import bcrypt
 import uuid
 from functools import wraps
 from dotenv import load_dotenv
+from flasgger import Swagger
 
 load_dotenv()
 
@@ -30,6 +31,7 @@ CORS(app, resources={
         "allow_headers": ["Content-Type", "Authorization", "X-Service-Token"]
     }
 })
+Swagger(app)
 
 db = SQLAlchemy(app)
 
@@ -67,7 +69,7 @@ def generate_jwt_token(user_id):
     """Generate JWT token for user"""
     payload = {
         'user_id': user_id,
-        'exp': datetime.utcnow().timestamp() + 86400  # 24 hours
+        'exp': datetime.utcnow().timestamp() + 86400  
     }
     return jwt.encode(payload, app.config['JWT_SECRET'], algorithm=app.config['JWT_ALGORITHM'])
 
@@ -107,14 +109,12 @@ def get_auth_user():
     if not auth_header.startswith('Bearer '):
         return None
     
-    token = auth_header[7:]  # Remove 'Bearer ' prefix
+    token = auth_header[7:] 
     
-    # Try JWT first
     user_id = verify_jwt_token(token)
     if user_id:
         return User.query.get(user_id)
     
-    # Try API key
     api_keys = APIKey.query.filter_by(is_active=True).all()
     for key in api_keys:
         if verify_api_key(token, key.key_hash):
@@ -141,7 +141,13 @@ def require_auth(f):
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint"""
+    """
+    Health check endpoint
+    ---
+    responses:
+      200:
+        description: Service is healthy
+    """
     return jsonify({
         'status': 'healthy',
         'service': 'auth-service'
@@ -151,7 +157,28 @@ def health():
 
 @app.route('/api/v1/auth/register', methods=['POST'])
 def register():
-    """Register a new user"""
+    """
+    Register a new user
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            email:
+              type: string
+            password:
+              type: string
+            name:
+              type: string
+    responses:
+      201:
+        description: User registered
+      400:
+        description: Invalid input or email exists
+    """
     data = request.get_json()
     
     if not data or not data.get('email') or not data.get('password'):
@@ -181,7 +208,28 @@ def register():
 
 @app.route('/api/v1/auth/login', methods=['POST'])
 def login():
-    """Login user and return JWT token"""
+    """
+    Login user and return JWT token
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            email:
+              type: string
+            password:
+              type: string
+    responses:
+      200:
+        description: Login successful
+      400:
+        description: Missing credentials
+      401:
+        description: Invalid credentials
+    """
     data = request.get_json()
     
     if not data or not data.get('email') or not data.get('password'):
@@ -203,18 +251,35 @@ def login():
         'token': token
     })
 
-# VERIFY TOKEN (FOR OTHER SERVICES)
 
 @app.route('/api/v1/auth/verify', methods=['POST'])
 def verify_token():
-    """Verify JWT token or API key - for inter-service communication"""
+    """
+    Verify JWT token or API key - for inter-service communication
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            token:
+              type: string
+    responses:
+      200:
+        description: Token valid
+      400:
+        description: Token required
+      401:
+        description: Invalid token
+    """
     data = request.get_json()
     token = data.get('token')
     
     if not token:
         return jsonify({'error': 'Token required'}), 400
     
-    # Try JWT first
     user_id = verify_jwt_token(token)
     if user_id:
         user = User.query.get(user_id)
@@ -226,7 +291,6 @@ def verify_token():
                 'name': user.name
             })
     
-    # Try API key
     api_keys = APIKey.query.filter_by(is_active=True).all()
     for key in api_keys:
         if verify_api_key(token, key.key_hash):
@@ -248,7 +312,24 @@ def verify_token():
 @app.route('/api/v1/auth/api-keys', methods=['POST'])
 @require_auth
 def create_api_key(current_user):
-    """Create a new API key"""
+    """
+    Create a new API key
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+    responses:
+      201:
+        description: API key created
+      400:
+        description: Name required
+    """
     data = request.get_json()
     
     if not data or not data.get('name'):
@@ -278,7 +359,13 @@ def create_api_key(current_user):
 @app.route('/api/v1/auth/api-keys', methods=['GET'])
 @require_auth
 def list_api_keys(current_user):
-    """List user's API keys"""
+    """
+    List user's API keys
+    ---
+    responses:
+      200:
+        description: List of API keys
+    """
     api_keys = APIKey.query.filter_by(user_id=current_user.id).all()
     
     return jsonify({
@@ -294,7 +381,20 @@ def list_api_keys(current_user):
 @app.route('/api/v1/auth/api-keys/<key_id>', methods=['DELETE'])
 @require_auth
 def delete_api_key(current_user, key_id):
-    """Delete/revoke an API key"""
+    """
+    Delete/revoke an API key
+    ---
+    parameters:
+      - name: key_id
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: API key deleted
+      404:
+        description: API key not found
+    """
     api_key = APIKey.query.filter_by(id=key_id, user_id=current_user.id).first()
     
     if not api_key:
@@ -305,12 +405,30 @@ def delete_api_key(current_user, key_id):
     
     return jsonify({'message': 'API key deleted'}), 200
 
-# GET USER INFO (FOR OTHER SERVICES)
+
 
 @app.route('/api/v1/auth/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
-    """Get user information - for inter-service communication"""
-    # Verify service token
+    """
+    Get user information - for inter-service communication
+    ---
+    parameters:
+      - name: user_id
+        in: path
+        type: integer
+        required: true
+      - name: X-Service-Token
+        in: header
+        type: string
+        required: true
+    responses:
+      200:
+        description: User info
+      401:
+        description: Unauthorized
+      404:
+        description: User not found
+    """
     service_token = request.headers.get('X-Service-Token')
     if service_token != os.getenv('SERVICE_TOKEN', 'service-secret-token'):
         return jsonify({'error': 'Unauthorized'}), 401
