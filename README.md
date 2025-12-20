@@ -160,30 +160,40 @@ You need to run each service in a separate terminal.
 **API Gateway:**
 ```bash
 cd microservices-version/api-gateway
+python -m venv venv    
+venv\Scripts\activate                                                                              pip install -r requirements.txt
 python app.py
 ```
 
 **Auth Service:**
 ```bash
 cd microservices-version/auth-service
+python -m venv venv    
+venv\Scripts\activate                                                                              pip install -r requirements.txt
 python app.py
 ```
 
 **Video Service:**
 ```bash
 cd microservices-version/video-service
+python -m venv venv    
+venv\Scripts\activate                                                                              pip install -r requirements.txt
 python app.py
 ```
 
 **Search Service:**
 ```bash
 cd microservices-version/search-service
+python -m venv venv    
+venv\Scripts\activate                                                                              pip install -r requirements.txt
 python app.py
 ```
 
 **Analytics Service:**
 ```bash
 cd microservices-version/analytics-service
+python -m venv venv    
+venv\Scripts\activate                                                                              pip install -r requirements.txt
 python app.py
 ```
 
@@ -210,13 +220,23 @@ We provide a PowerShell script to verify the "Golden Path" of the application: *
 
 ## Frontend Integration
 
-The frontend should **ONLY** communicate with the API Gateway.
+The frontend is a Next.js application running on **Port 3000**. It communicates **ONLY** with the API Gateway.
 
 ### Configuration
 In your frontend `.env.local`:
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:5000
 ```
+
+### Developer Dashboard
+The application includes a comprehensive **Developer Dashboard** accessible at `/developer-dashboard`. This dashboard provides real-time insights into your API usage and system performance.
+
+**Key Components** (`/components/dashboard`):
+-   **StatCard**: Displays high-level metrics like Total Requests, Success Rate, and Avg Response Time.
+-   **EndpointList**: Visualizes traffic breakdown by API endpoint.
+-   **SearchJobList**: Shows the status and results of recent asynchronous search jobs (auto-refreshes every 5s).
+-   **ApiKeyCard**: Allows users to manage (create/delete) their API keys.
+-   **DashboardCard**: A reusable container component for dashboard sections.
 
 ### API Client Example
 ```javascript
