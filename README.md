@@ -111,7 +111,7 @@ stateDiagram-v2
 
 ## API Documentation
 
-The platform provides interactive **Swagger/OpenAPI** documentation for all microservices. This allows developers to explore endpoints, test requests, and view response schemas directly from the browser.
+The platform provides interactive **Swagger** documentation for all microservices. This allows developers to explore endpoints, test requests, and view response schemas directly from the browser.
 
 ### Accessing Swagger UI
 
